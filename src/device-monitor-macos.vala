@@ -286,6 +286,12 @@ namespace Idun {
 			}
 		}
 
+		public uint16 rsd_port {
+			get {
+				return _rsd_port;
+			}
+		}
+
 		public Darwin.Xpc.Uuid? assertion_identifier {
 			get {
 				return _assertion_identifier;
@@ -295,6 +301,7 @@ namespace Idun {
 		private XpcClient pairing_device;
 		private Bytes? _remote_unlock_host_key;
 		private Darwin.Xpc.Uuid? _assertion_identifier;
+		private uint16 _rsd_port;
 		private InetAddress? tunnel_device_address;
 		private SystemNetworkStack? tunnel_netstack;
 		private DiscoveryService? _discovery;
@@ -339,6 +346,7 @@ namespace Idun {
 			tunnel_device_address = new InetAddress.from_string (tunnel_ip_address);
 
 			_discovery = yield locate_discovery_service (tunnel_device_address, cancellable);
+			_rsd_port = query_remote_port (_discovery.stream);
 		}
 
 		public async IOStream open_tcp_connection (uint16 port, Cancellable? cancellable) throws Efni.Error, IOError {
@@ -392,6 +400,15 @@ namespace Idun {
 			var disco = yield locate_discovery_service (tunnel_device_address, cancellable);
 			_discovery.close ();
 			_discovery = disco;
+			_rsd_port = query_remote_port (disco.stream);
+		}
+
+		private static uint16 query_remote_port (IOStream stream) {
+			try {
+				return ((InetSocketAddress) ((SocketConnection) stream).get_remote_address ()).get_port ();
+			} catch (GLib.Error e) {
+				assert_not_reached ();
+			}
 		}
 
 		private static async DiscoveryService locate_discovery_service (InetAddress tunnel_device_address, Cancellable? cancellable)

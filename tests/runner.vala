@@ -5,6 +5,9 @@ namespace Idun.Test {
 
 		Idun.PlistTest.add_tests ();
 		Idun.OpackTest.add_tests ();
+#if HAVE_DAEMON
+		Idun.DaemonTest.add_tests ();
+#endif
 
 		GLib.Test.run ();
 	}

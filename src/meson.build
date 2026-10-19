@@ -33,6 +33,14 @@ if host_os != 'macos'
   ]
 endif
 
+if build_daemon
+  idun_sources += [
+    'daemon-protocol.vala',
+    'daemon-client.vala',
+    'daemon-server.vala',
+  ]
+endif
+
 if host_os_family == 'windows'
   idun_sources += [
     'device-monitor-windows.vala',
@@ -61,12 +69,14 @@ idun_gir_name = f'Idun-@api_version@.gir'
 idun = library('idun-' + api_version, idun_sources,
   c_args: component_cflags,
   objc_args: component_cflags,
+  include_directories: include_directories('..'),
   vala_header: 'idun.h',
   vala_vapi: f'idun-@api_version@.vapi',
   vala_gir: idun_gir_name,
   vala_args: [
     '--pkg=gio-2.0',
     '--pkg=json-glib-1.0',
+    '--pkg=idun-config',
     platform_vala_args,
   ],
   link_args: platform_link_args,

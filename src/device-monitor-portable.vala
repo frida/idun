@@ -32,6 +32,12 @@ namespace Idun {
 			}
 		}
 
+		public uint16 rsd_port {
+			get {
+				return tunnel_connection.remote_rsd_port;
+			}
+		}
+
 		private UsbNcmDriver? ncm;
 		private TcpTunnelConnection? tunnel_connection;
 		private DiscoveryService? _discovery_service;
@@ -1128,6 +1134,12 @@ namespace Idun {
 			}
 		}
 
+		public uint16 rsd_port {
+			get {
+				return tunnel_connection.remote_rsd_port;
+			}
+		}
+
 		private UsbNcmDriver? ncm;
 		private TunnelConnection? tunnel_connection;
 		private DiscoveryService? _discovery_service;
@@ -1339,6 +1351,12 @@ namespace Idun {
 		public Bytes? remote_unlock_host_key {
 			get {
 				return _remote_unlock_host_key;
+			}
+		}
+
+		public uint16 rsd_port {
+			get {
+				return tunnel_connection.remote_rsd_port;
 			}
 		}
 

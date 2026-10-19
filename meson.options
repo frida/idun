@@ -3,3 +3,9 @@ option('tests',
   value: 'auto',
   description: 'Build tests'
 )
+
+option('daemon',
+  type: 'feature',
+  value: 'auto',
+  description: 'Build idund, the per-user daemon'
+)

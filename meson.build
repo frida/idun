@@ -176,6 +176,20 @@ endif
 vapidir = get_option('prefix') / get_option('datadir') / 'vala' / 'vapi'
 header_install_dir = get_option('includedir') / f'idun-@api_version@'
 
+daemon_opt = get_option('daemon')
+if daemon_opt.auto()
+  build_daemon = host_os_family == 'linux'
+else
+  build_daemon = not daemon_opt.disabled()
+endif
+if build_daemon
+  add_project_arguments('--define=HAVE_DAEMON', language: 'vala')
+endif
+
+cdata = configuration_data()
+cdata.set_quoted('IDUN_CONFIG_DAEMON_PATH', get_option('prefix') / get_option('bindir') / 'idund')
+configure_file(output: 'idun-config.h', configuration: cdata)
+
 tests_opt = get_option('tests')
 if tests_opt.auto()
   build_tests = not meson.is_subproject() and meson.can_run_host_binaries()
@@ -184,6 +198,9 @@ else
 endif
 
 subdir('src')
+if build_daemon
+  subdir('daemon')
+endif
 if build_tests
   subdir('tests')
 endif

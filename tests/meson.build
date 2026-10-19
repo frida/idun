@@ -1,9 +1,14 @@
 test_sources = [
   'main.vala',
   'runner.vala',
+  'async-harness.vala',
   'test-plist.vala',
   'test-opack.vala',
 ]
+
+if build_daemon
+  test_sources += 'test-daemon.vala'
+endif
 
 test_deps = [glib_dep, gobject_dep, gio_dep, gee_dep, json_glib_dep, efni_dep, idun_dep] + platform_deps
 

@@ -5,6 +5,14 @@ namespace Idun {
 		public signal void device_attached (Device device);
 		public signal void device_detached (Device device);
 
+#if HAVE_DAEMON
+		public DaemonPolicy daemon_policy {
+			get;
+			set;
+			default = DaemonPolicy.from_environment ();
+		}
+#endif
+
 		private State state = CREATED;
 		private Gee.List<Backend> backends = new Gee.ArrayList<Backend> ();
 		private Gee.Map<string, Device> devices = new Gee.HashMap<string, Device> ();
@@ -22,17 +30,17 @@ namespace Idun {
 
 		private delegate void NotifyCompleteFunc ();
 
-		construct {
 #if MACOS
+		construct {
 			add_backend (new UsbmuxBackend ());
 			add_backend (new MacOSCoreDeviceBackend ());
-#else
-			add_backend (new UsbmuxBackend (pairing_store));
-			add_backend (new PortableCoreDeviceBackend (pairing_store));
-#endif
 		}
+#endif
 
 		public async void start (Cancellable? cancellable = null) throws IOError {
+#if !MACOS
+			yield add_portable_backends (cancellable);
+#endif
 			state = STARTING;
 
 			var remaining = backends.size + 1;
@@ -68,6 +76,33 @@ namespace Idun {
 			foreach (var device in devices.values)
 				device_attached (device);
 		}
+
+#if !MACOS
+		private async void add_portable_backends (Cancellable? cancellable) throws IOError {
+#if HAVE_DAEMON
+			if (daemon_policy != NEVER) {
+				var daemon = yield try_open_daemon (cancellable);
+				if (daemon != null) {
+					add_backend (new UsbmuxBackend (null));
+					add_backend (daemon);
+					return;
+				}
+			}
+#endif
+			add_backend (new UsbmuxBackend (pairing_store));
+			add_backend (new PortableCoreDeviceBackend (pairing_store));
+		}
+
+#if HAVE_DAEMON
+		private async DaemonCoreDeviceBackend? try_open_daemon (Cancellable? cancellable) throws IOError {
+			try {
+				return new DaemonCoreDeviceBackend (yield DaemonClient.open (Daemon.query_endpoint (), cancellable));
+			} catch (Efni.Error e) {
+				return null;
+			}
+		}
+#endif
+#endif
 
 		public async void stop (Cancellable? cancellable = null) throws IOError {
 			var remaining = backends.size + 1;
@@ -486,6 +521,10 @@ namespace Idun {
 			get;
 		}
 
+		public abstract uint16 rsd_port {
+			get;
+		}
+
 		public abstract async void close (Cancellable? cancellable) throws IOError;
 		public abstract async IOStream open_tcp_connection (uint16 port, Cancellable? cancellable) throws Efni.Error, IOError;
 		public abstract UdpSocket create_udp_socket () throws Efni.Error;
@@ -517,7 +556,7 @@ namespace Idun {
 
 	private sealed class UsbmuxBackend : Object, Backend {
 #if !MACOS
-		public PairingStore pairing_store {
+		public PairingStore? pairing_store {
 			get;
 			construct;
 		}
@@ -540,7 +579,7 @@ namespace Idun {
 		private Cancellable io_cancellable = new Cancellable ();
 
 #if !MACOS
-		public UsbmuxBackend (PairingStore pairing_store) {
+		public UsbmuxBackend (PairingStore? pairing_store) {
 			Object (pairing_store: pairing_store);
 		}
 #endif
@@ -732,7 +771,7 @@ namespace Idun {
 		}
 
 #if !MACOS
-		public PairingStore pairing_store {
+		public PairingStore? pairing_store {
 			get;
 			construct;
 		}
@@ -784,13 +823,16 @@ namespace Idun {
 			Object (device: device);
 		}
 #else
-		public UsbmuxTransport (UsbmuxDevice device, PairingStore store) {
+		public UsbmuxTransport (UsbmuxDevice device, PairingStore? store) {
 			Object (device: device, pairing_store: store);
 		}
 #endif
 
 		public async Tunnel? find_tunnel (UsbmuxDevice? device, Cancellable? cancellable) throws Efni.Error, IOError {
 #if !MACOS
+			if (pairing_store == null)
+				return null;
+
 			while (tunnel_request != null) {
 				try {
 					return yield tunnel_request.future.wait_async (cancellable);
