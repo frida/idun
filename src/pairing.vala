@@ -1579,7 +1579,7 @@ namespace Idun {
 
 	public sealed class PairingIdentity {
 		public string identifier;
-		public Key key;
+		internal Key key;
 		public Bytes irk;
 
 		public static PairingIdentity make () {

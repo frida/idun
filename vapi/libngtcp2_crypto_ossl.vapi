@@ -2,7 +2,7 @@
 namespace NGTcp2.Crypto {
 	[CCode (cheader_filename = "ngtcp2/ngtcp2_crypto_ossl.h")]
 	namespace Ossl {
-		public int configure_client_session (OpenSSL.SSL ssl);
+		public int configure_client_session (void * ssl);
 	}
 
 	[CCode (cname = "ngtcp2_crypto_conn_ref", has_destroy_function = false)]

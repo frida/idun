@@ -2,7 +2,7 @@
 namespace NGTcp2.Crypto {
 	[CCode (cheader_filename = "ngtcp2/ngtcp2_crypto_quictls.h")]
 	namespace Quictls {
-		public int configure_client_context (OpenSSL.SSLContext ssl_ctx);
+		public int configure_client_context (void * ssl_ctx);
 	}
 
 	[CCode (cname = "ngtcp2_crypto_conn_ref", has_destroy_function = false)]

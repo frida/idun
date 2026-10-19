@@ -1026,9 +1026,9 @@ namespace Idun {
 	}
 
 	public sealed class TunnelKey {
-		public OpenSSL.Envelope.Key handle;
+		internal OpenSSL.Envelope.Key handle;
 
-		public TunnelKey (owned OpenSSL.Envelope.Key handle) {
+		internal TunnelKey (owned OpenSSL.Envelope.Key handle) {
 			this.handle = (owned) handle;
 		}
 	}
