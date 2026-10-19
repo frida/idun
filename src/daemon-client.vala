@@ -1,6 +1,8 @@
 using Efni;
 
 namespace Idun {
+	public delegate string DaemonLocator () throws Efni.Error;
+
 	public sealed class DaemonClient : Object {
 		public DaemonService service {
 			get;
@@ -14,12 +16,13 @@ namespace Idun {
 
 		private const uint SPAWN_TIMEOUT = 10000;
 
-		public static async DaemonClient open_shared (string? daemon_path, Cancellable? cancellable) throws Efni.Error, IOError {
+		public static async DaemonClient open_shared (DaemonLocator? locate_daemon, Cancellable? cancellable)
+				throws Efni.Error, IOError {
 			var client = yield try_open_session_bus (cancellable);
 			if (client == null) {
 				client = yield try_open_control_path (cancellable);
 				if (client == null) {
-					yield spawn ((daemon_path != null) ? daemon_path : Daemon.query_installed_path (), cancellable);
+					yield spawn ((locate_daemon != null) ? locate_daemon () : Daemon.query_installed_path (), cancellable);
 					client = yield try_open_control_path (cancellable);
 					if (client == null)
 						throw new Efni.Error.SERVER_NOT_RUNNING ("idund did not start listening");
@@ -38,7 +41,7 @@ namespace Idun {
 			}
 			yield client.close (cancellable);
 
-			return yield open_shared (daemon_path, cancellable);
+			return yield open_shared (locate_daemon, cancellable);
 		}
 
 		public static async DaemonClient open_endpoint (string address, Cancellable? cancellable) throws Efni.Error, IOError {

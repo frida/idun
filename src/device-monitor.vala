@@ -6,12 +6,8 @@ namespace Idun {
 		public signal void device_detached (Device device);
 
 #if HAVE_DAEMON
-		public string? daemon_path {
-			get;
-			set;
-		}
-
 		private bool use_daemon = true;
+		private DaemonLocator? locate_daemon;
 #endif
 
 		private State state = CREATED;
@@ -39,6 +35,10 @@ namespace Idun {
 #elif HAVE_DAEMON
 		internal DeviceMonitor.for_daemon () {
 			use_daemon = false;
+		}
+
+		public void set_daemon_locator (owned DaemonLocator locator) {
+			locate_daemon = (owned) locator;
 		}
 #endif
 
@@ -89,7 +89,7 @@ namespace Idun {
 		private async void add_portable_backends (Cancellable? cancellable) throws Efni.Error, IOError {
 #if HAVE_DAEMON
 			if (use_daemon) {
-				var client = yield DaemonClient.open_shared (daemon_path, cancellable);
+				var client = yield DaemonClient.open_shared (locate_daemon, cancellable);
 				if (state == STOPPED) {
 					yield client.close (cancellable);
 					return;

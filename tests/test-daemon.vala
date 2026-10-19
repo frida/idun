@@ -74,11 +74,11 @@ namespace Idun.DaemonTest {
 		string daemon_path = Environment.get_variable ("IDUN_TEST_IDUND");
 		try {
 			var monitor = new DeviceMonitor ();
-			monitor.daemon_path = daemon_path;
+			monitor.set_daemon_locator (() => daemon_path);
 			yield monitor.start (null);
 			yield monitor.stop (null);
 
-			var client = yield DaemonClient.open_shared (daemon_path, null);
+			var client = yield DaemonClient.open_shared (() => daemon_path, null);
 			assert_true (client.service.autospawned);
 			yield client.service.shutdown (null, null);
 			yield client.close (null);
