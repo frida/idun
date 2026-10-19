@@ -1,7 +1,7 @@
 using Efni;
 
 namespace Idun {
-	[DBus (name = "io.github.frida.Idun1.Daemon")]
+	[DBus (name = "org.freedesktop.Idun1.Daemon")]
 	public interface DaemonService : Object {
 		public abstract uint protocol_version {
 			get;
@@ -34,8 +34,8 @@ namespace Idun {
 
 	namespace Daemon {
 		public const uint PROTOCOL_VERSION = 1;
-		public const string BUS_NAME = "io.github.frida.Idun1";
-		public const string OBJECT_PATH = "/io/github/frida/Idun1/Daemon";
+		public const string BUS_NAME = "org.freedesktop.Idun1";
+		public const string OBJECT_PATH = "/org/freedesktop/Idun1";
 
 #if WINDOWS
 		private const string FILENAME = "idund.exe";
