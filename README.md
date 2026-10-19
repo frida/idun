@@ -19,17 +19,17 @@ Frida's Apple backend is built on this library.
 
 ## idund
 
-A device only allows one CoreDevice tunnel per host, so on Linux
-the tunnel lives in idund, a per-user daemon, and every process
-on the desktop shares it. Clients reach it through the session
-bus, where a packaged install provides D-Bus activation and a
-systemd user unit, or over peer-to-peer D-Bus on a Unix socket in
-the user's runtime directory. Tunnel connections are handed over
-as socket pairs. A client that finds no daemon starts one from
-the installed location next to the library, or from a path the
-application supplies, and the daemon exits once it has been idle
-for a while. On macOS the system's own tunnel is used instead;
-Windows support for the daemon is still to come.
+A device only allows one CoreDevice tunnel per host, so on Windows
+and Linux the tunnel lives in idund, a per-user daemon, and every
+process on the desktop shares it. On Linux clients reach it through
+the session bus, where a packaged install provides D-Bus activation
+and a systemd user unit, or over peer-to-peer D-Bus on a Unix socket
+in the user's runtime directory. On Windows the daemon listens on
+loopback and records its address in a control file under the user's
+local application data. A client that finds no daemon starts one
+from the installed location next to the library, or from a path the
+application supplies, and the daemon exits once it has been idle for
+a while. On macOS the system's own tunnel is used instead.
 
 When idund may create TUN interfaces on Linux, which takes
 CAP_NET_ADMIN, the tunnel becomes a kernel network interface and

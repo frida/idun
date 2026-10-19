@@ -46,7 +46,9 @@ platform_vala_args = []
 platform_link_args = []
 vala_defines = []
 
-if host_os_family != 'windows'
+if host_os_family == 'windows'
+  platform_deps += dependency('gio-windows-2.0')
+else
   platform_deps += dependency('gio-unix-2.0')
   platform_vala_args += ['--pkg=gio-unix-2.0', '--pkg=posix']
 endif
@@ -178,7 +180,7 @@ header_install_dir = get_option('includedir') / f'idun-@api_version@'
 
 daemon_opt = get_option('daemon')
 if daemon_opt.auto()
-  build_daemon = host_os_family == 'linux'
+  build_daemon = host_os_family == 'windows' or host_os_family == 'linux'
 else
   build_daemon = not daemon_opt.disabled()
 endif
@@ -201,7 +203,9 @@ endif
 subdir('src')
 if build_daemon
   subdir('daemon')
-  subdir('data')
+  if host_os_family == 'linux'
+    subdir('data')
+  endif
 endif
 if build_tests
   subdir('tests')

@@ -18,10 +18,17 @@ namespace Idun {
 			throws GLib.Error;
 		public abstract async HashTable<string, Variant> open_tunnel (string udid, Cancellable? cancellable, BusName? sender)
 			throws GLib.Error;
+#if WINDOWS
+		public abstract async uint8[] open_tcp_connection (string udid, uint16 port, uint client_pid, Cancellable? cancellable,
+			BusName? sender) throws GLib.Error;
+		public abstract uint8[] open_udp_socket (string udid, uint client_pid, out string local_address, out uint16 local_port,
+			Cancellable? cancellable, BusName? sender) throws GLib.Error;
+#else
 		public abstract async Socket open_tcp_connection (string udid, uint16 port, Cancellable? cancellable, BusName? sender)
 			throws GLib.Error;
 		public abstract Socket open_udp_socket (string udid, out string local_address, out uint16 local_port,
 			Cancellable? cancellable, BusName? sender) throws GLib.Error;
+#endif
 		public abstract async void shutdown (Cancellable? cancellable, BusName? sender) throws GLib.Error;
 	}
 
@@ -30,15 +37,41 @@ namespace Idun {
 		public const string BUS_NAME = "io.github.frida.Idun1";
 		public const string OBJECT_PATH = "/io/github/frida/Idun1/Daemon";
 
-		public SocketAddress query_endpoint () {
-			return new UnixSocketAddress (Path.build_filename (query_runtime_directory (), "control"));
+#if WINDOWS
+		private const string FILENAME = "idund.exe";
+#else
+		private const string FILENAME = "idund";
+#endif
+
+		public string query_control_path () {
+			return Path.build_filename (query_runtime_directory (), "control");
 		}
 
 		public string query_runtime_directory () {
+#if WINDOWS
+			return Path.build_filename (Environment.get_user_cache_dir (), "idun");
+#else
 			unowned string? runtime_dir = Environment.get_variable ("XDG_RUNTIME_DIR");
 			if (runtime_dir != null)
 				return Path.build_filename (runtime_dir, "idun");
 			return Path.build_filename (Environment.get_tmp_dir (), "idun-%u".printf ((uint) Posix.getuid ()));
+#endif
+		}
+
+		public string? read_endpoint_address (string control_path) {
+#if WINDOWS
+			string address;
+			try {
+				FileUtils.get_contents (control_path, out address);
+			} catch (FileError e) {
+				return null;
+			}
+			return address;
+#else
+			if (!FileUtils.test (control_path, EXISTS))
+				return null;
+			return "unix:path=" + DBus.address_escape_value (control_path);
+#endif
 		}
 
 		public string query_installed_path () {
@@ -46,12 +79,12 @@ namespace Idun {
 
 			string basename = Path.get_basename (module_dir);
 			if (basename == "bin" || basename == "sbin")
-				return Path.build_filename (module_dir, "idund");
+				return Path.build_filename (module_dir, FILENAME);
 
 			string prefix = module_dir.has_suffix (Config.LIBDIR)
 				? module_dir[:module_dir.length - Config.LIBDIR.length]
 				: Path.get_dirname (module_dir);
-			return Path.build_filename (prefix, Config.BINDIR, "idund");
+			return Path.build_filename (prefix, Config.BINDIR, FILENAME);
 		}
 
 		public extern string _query_library_path ();
@@ -83,6 +116,25 @@ namespace Idun {
 
 			return description;
 		}
+
+#if WINDOWS
+		public uint8[] hand_over_socket (Socket socket, uint process_id) throws Efni.Error {
+			var info = _duplicate_socket (socket, process_id);
+			try {
+				socket.close ();
+			} catch (GLib.Error e) {
+			}
+			return info;
+		}
+
+		public extern uint8[] _duplicate_socket (Socket socket, uint process_id) throws Efni.Error;
+
+		public extern Socket _socket_from_duplicate (uint8[] info) throws Efni.Error;
+
+		public extern uint _query_process_id ();
+
+		public extern InputStream _spawn (string path) throws Efni.Error;
+#endif
 
 		[NoReturn]
 		public void throw_remote_error (GLib.Error e) throws Efni.Error, IOError {

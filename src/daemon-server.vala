@@ -4,7 +4,7 @@ namespace Idun {
 	public sealed class DaemonServer : Object {
 		public signal void idle ();
 
-		public SocketAddress endpoint {
+		public string control_path {
 			get;
 			construct;
 		}
@@ -24,10 +24,16 @@ namespace Idun {
 			construct;
 		}
 
+		public string client_address {
+			get {
+				return server.client_address;
+			}
+		}
+
 		private DeviceMonitor monitor = new DeviceMonitor.for_daemon ();
 		private Gee.Map<string, Device> devices = new Gee.HashMap<string, Device> ();
 		private Gee.Map<string, Tunnel> tunnels = new Gee.HashMap<string, Tunnel> ();
-		private SocketService service = new SocketService ();
+		private DBusServer? server;
 		private Gee.Set<DBusConnection> clients = new Gee.HashSet<DBusConnection> ();
 		private Gee.Map<string, uint> bus_clients = new Gee.HashMap<string, uint> ();
 		private uint bus_name_id;
@@ -36,9 +42,11 @@ namespace Idun {
 		private Source? idle_source;
 		private Cancellable io_cancellable = new Cancellable ();
 
-		public DaemonServer (SocketAddress endpoint, bool autospawned, uint idle_timeout, bool serve_session_bus) {
+		private const uint PROBE_TIMEOUT = 1000;
+
+		public DaemonServer (string control_path, bool autospawned, uint idle_timeout, bool serve_session_bus) {
 			Object (
-				endpoint: endpoint,
+				control_path: control_path,
 				autospawned: autospawned,
 				idle_timeout: idle_timeout,
 				serve_session_bus: serve_session_bus
@@ -50,20 +58,23 @@ namespace Idun {
 		}
 
 		public async void start (Cancellable? cancellable) throws Efni.Error, IOError {
-			prepare_endpoint ();
+			yield prepare_control_path (cancellable);
+
+			try {
+				server = new DBusServer.sync (make_listen_address (), AUTHENTICATION_ALLOW_ANONYMOUS, DBus.generate_guid (), null,
+					cancellable);
+			} catch (GLib.Error e) {
+				cancellable.set_error_if_cancelled ();
+				throw new Efni.Error.ADDRESS_IN_USE ("%s", e.message);
+			}
+			server.new_connection.connect (on_new_connection);
 
 			monitor.device_attached.connect (on_device_attached);
 			monitor.device_detached.connect (on_device_detached);
 			yield monitor.start (cancellable);
 
-			try {
-				SocketAddress effective_address;
-				service.add_address (endpoint, STREAM, DEFAULT, null, out effective_address);
-			} catch (GLib.Error e) {
-				throw new Efni.Error.ADDRESS_IN_USE ("%s", e.message);
-			}
-			service.incoming.connect (on_incoming);
-			service.start ();
+			server.start ();
+			publish_control_path ();
 
 			if (serve_session_bus && Environment.get_variable ("DBUS_SESSION_BUS_ADDRESS") != null)
 				bus_name_id = Bus.own_name (SESSION, Daemon.BUS_NAME, NONE, on_bus_acquired);
@@ -97,65 +108,100 @@ namespace Idun {
 		}
 
 		private void stop_listening () {
-			service.stop ();
-			remove_endpoint ();
+			if (!server.is_active ())
+				return;
+			unpublish_control_path ();
+			server.stop ();
 		}
 
-		private void prepare_endpoint () throws Efni.Error {
-			var address = endpoint as UnixSocketAddress;
-			if (address == null)
-				return;
-
-			var path = File.new_for_path (address.path);
+		private async void prepare_control_path (Cancellable? cancellable) throws Efni.Error, IOError {
+			var parent = File.new_for_path (control_path).get_parent ();
 			try {
-				path.get_parent ().make_directory_with_parents ();
+				parent.make_directory_with_parents (cancellable);
 			} catch (GLib.Error e) {
+				cancellable.set_error_if_cancelled ();
 				if (!(e is IOError.EXISTS))
 					throw new Efni.Error.PERMISSION_DENIED ("%s", e.message);
 			}
-			FileUtils.chmod (path.get_parent ().get_path (), 0700);
+#if !WINDOWS
+			FileUtils.chmod (parent.get_path (), 0700);
+#endif
 
-			if (!path.query_exists ())
+			string? address = Daemon.read_endpoint_address (control_path);
+			if (address == null)
 				return;
-
-			SocketConnection? probe = null;
-			try {
-				probe = new SocketClient ().connect (address);
-			} catch (GLib.Error e) {
-			}
-			if (probe != null) {
-				try {
-					probe.close ();
-				} catch (GLib.Error e) {
-				}
+			if (yield probe_endpoint (address, cancellable))
 				throw new Efni.Error.ADDRESS_IN_USE ("idund is already running");
-			}
-
-			FileUtils.unlink (address.path);
+			FileUtils.unlink (control_path);
 		}
 
-		private void remove_endpoint () {
-			var address = endpoint as UnixSocketAddress;
-			if (address != null)
-				FileUtils.unlink (address.path);
-		}
+		private async bool probe_endpoint (string address, Cancellable? cancellable) throws IOError {
+			var timeout = new Cancellable ();
 
-		private bool on_incoming (SocketConnection connection) {
-			serve.begin (connection);
-			return true;
-		}
+			var main_context = MainContext.get_thread_default ();
 
-		private async void serve (SocketConnection stream) {
+			var timeout_source = new TimeoutSource (PROBE_TIMEOUT);
+			timeout_source.set_callback (() => {
+				timeout.cancel ();
+				return Source.REMOVE;
+			});
+			timeout_source.attach (main_context);
+
+			var cancel_source = new CancellableSource (cancellable);
+			cancel_source.set_callback (() => {
+				timeout.cancel ();
+				return Source.REMOVE;
+			});
+			cancel_source.attach (main_context);
+
 			try {
-				var connection = yield new DBusConnection (stream, DBus.generate_guid (),
-					AUTHENTICATION_SERVER | AUTHENTICATION_ALLOW_ANONYMOUS | DELAY_MESSAGE_PROCESSING, null, io_cancellable);
-				connection.register_object (Daemon.OBJECT_PATH, service_impl);
-				connection.on_closed.connect (on_client_closed);
-				clients.add (connection);
-				cancel_idle_check ();
-				connection.start_message_processing ();
+				var connection = yield new DBusConnection.for_address (address, AUTHENTICATION_CLIENT, null, timeout);
+				connection.close.begin (null);
+				return true;
 			} catch (GLib.Error e) {
+				cancellable.set_error_if_cancelled ();
+				return false;
+			} finally {
+				timeout_source.destroy ();
+				cancel_source.destroy ();
 			}
+		}
+
+		private string make_listen_address () {
+#if WINDOWS
+			return "nonce-tcp:host=127.0.0.1";
+#else
+			return "unix:path=" + DBus.address_escape_value (control_path);
+#endif
+		}
+
+		private void publish_control_path () throws Efni.Error {
+#if WINDOWS
+			try {
+				FileUtils.set_contents (control_path, server.client_address);
+			} catch (FileError e) {
+				throw new Efni.Error.PERMISSION_DENIED ("%s", e.message);
+			}
+#endif
+		}
+
+		private void unpublish_control_path () {
+#if WINDOWS
+			if (Daemon.read_endpoint_address (control_path) == server.client_address)
+				FileUtils.unlink (control_path);
+#endif
+		}
+
+		private bool on_new_connection (DBusConnection connection) {
+			try {
+				connection.register_object (Daemon.OBJECT_PATH, service_impl);
+			} catch (IOError e) {
+				assert_not_reached ();
+			}
+			connection.on_closed.connect (on_client_closed);
+			clients.add (connection);
+			cancel_idle_check ();
+			return true;
 		}
 
 		private void on_client_closed (DBusConnection connection, bool remote_peer_vanished, GLib.Error? error) {
@@ -287,6 +333,38 @@ namespace Idun {
 			return tunnel;
 		}
 
+#if WINDOWS
+		private static void make_socket_pair (SocketType type, out Socket ours, out Socket theirs) throws Efni.Error {
+			try {
+				var loopback = new InetSocketAddress (new InetAddress.loopback (IPV4), 0);
+				if (type == STREAM) {
+					var listener = new Socket (IPV4, STREAM, TCP);
+					listener.bind (loopback, false);
+					listener.listen ();
+
+					var client = new Socket (IPV4, STREAM, TCP);
+					client.connect (listener.get_local_address ());
+					ours = listener.accept ();
+					theirs = client;
+
+					listener.close ();
+
+					Tcp.enable_nodelay (ours);
+					Tcp.enable_nodelay (theirs);
+				} else {
+					ours = new Socket (IPV4, DATAGRAM, UDP);
+					ours.bind (loopback, false);
+					theirs = new Socket (IPV4, DATAGRAM, UDP);
+					theirs.bind (loopback, false);
+
+					ours.connect (theirs.get_local_address ());
+					theirs.connect (ours.get_local_address ());
+				}
+			} catch (GLib.Error e) {
+				throw new Efni.Error.NOT_SUPPORTED ("%s", e.message);
+			}
+		}
+#else
 		private static void make_socket_pair (SocketType type, out Socket ours, out Socket theirs) throws Efni.Error {
 			int fds[2];
 			if (Posix.socketpair (Posix.AF_UNIX, (type == STREAM) ? Posix.SOCK_STREAM : Posix.SOCK_DGRAM, 0, fds) != 0)
@@ -299,6 +377,7 @@ namespace Idun {
 				throw new Efni.Error.NOT_SUPPORTED ("%s", e.message);
 			}
 		}
+#endif
 
 		private async void shutdown () {
 			foreach (var client in clients.to_array ()) {
@@ -346,6 +425,19 @@ namespace Idun {
 				return Daemon.describe_tunnel (yield server.open_tunnel (udid, cancellable));
 			}
 
+#if WINDOWS
+			public async uint8[] open_tcp_connection (string udid, uint16 port, uint client_pid, Cancellable? cancellable,
+					BusName? sender) throws GLib.Error {
+				server.track_bus_client (sender);
+				return Daemon.hand_over_socket (yield server.open_tcp_connection (udid, port, cancellable), client_pid);
+			}
+
+			public uint8[] open_udp_socket (string udid, uint client_pid, out string local_address, out uint16 local_port,
+					Cancellable? cancellable, BusName? sender) throws GLib.Error {
+				server.track_bus_client (sender);
+				return Daemon.hand_over_socket (server.open_udp_socket (udid, out local_address, out local_port), client_pid);
+			}
+#else
 			public async Socket open_tcp_connection (string udid, uint16 port, Cancellable? cancellable, BusName? sender)
 					throws GLib.Error {
 				server.track_bus_client (sender);
@@ -357,6 +449,7 @@ namespace Idun {
 				server.track_bus_client (sender);
 				return server.open_udp_socket (udid, out local_address, out local_port);
 			}
+#endif
 
 			public async void shutdown (Cancellable? cancellable, BusName? sender) throws GLib.Error {
 				server.stop_listening ();

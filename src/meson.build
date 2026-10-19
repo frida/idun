@@ -41,10 +41,14 @@ endif
 if build_daemon
   idun_sources += [
     'daemon-protocol.vala',
-    'daemon-glue.c',
     'daemon-client.vala',
     'daemon-server.vala',
   ]
+  if host_os_family == 'windows'
+    idun_sources += 'daemon-glue-windows.c'
+  else
+    idun_sources += 'daemon-glue-linux.c'
+  endif
 endif
 
 if host_os_family == 'windows'

@@ -89,7 +89,7 @@ namespace Idun {
 		private async void add_portable_backends (Cancellable? cancellable) throws Efni.Error, IOError {
 #if HAVE_DAEMON
 			if (use_daemon) {
-				var client = yield DaemonClient.open (daemon_path, cancellable);
+				var client = yield DaemonClient.open_shared (daemon_path, cancellable);
 				if (state == STOPPED) {
 					yield client.close (cancellable);
 					return;

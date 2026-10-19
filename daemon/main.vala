@@ -19,12 +19,14 @@ namespace Idun.DaemonMain {
 			return 1;
 		}
 
+#if !WINDOWS
 		if (background)
 			Posix.setsid ();
+#endif
 
 		var loop = new MainLoop ();
 
-		var server = new DaemonServer (Daemon.query_endpoint (), background, (uint) idle_timeout, true);
+		var server = new DaemonServer (Daemon.query_control_path (), background, (uint) idle_timeout, true);
 		server.idle.connect (() => stop_and_quit (server, loop));
 
 		int exit_code = 0;
@@ -45,6 +47,7 @@ namespace Idun.DaemonMain {
 			}
 		});
 
+#if !WINDOWS
 		Unix.signal_add (Posix.Signal.INT, () => {
 			stop_and_quit (server, loop);
 			return Source.REMOVE;
@@ -53,6 +56,7 @@ namespace Idun.DaemonMain {
 			stop_and_quit (server, loop);
 			return Source.REMOVE;
 		});
+#endif
 
 		loop.run ();
 
@@ -63,10 +67,13 @@ namespace Idun.DaemonMain {
 		stdout.printf ("ready\n");
 		stdout.flush ();
 
+#if !WINDOWS
 		if (background)
 			detach_from_terminal ();
+#endif
 	}
 
+#if !WINDOWS
 	private static void detach_from_terminal () {
 		int fd = Posix.open ("/dev/null", Posix.O_RDWR);
 		Posix.dup2 (fd, Posix.STDIN_FILENO);
@@ -74,6 +81,7 @@ namespace Idun.DaemonMain {
 		Posix.dup2 (fd, Posix.STDERR_FILENO);
 		Posix.close (fd);
 	}
+#endif
 
 	private static void stop_and_quit (DaemonServer server, MainLoop loop) {
 		server.stop.begin (null, (obj, res) => {
