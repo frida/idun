@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=io.github.frida.Idun1
+Exec=@bindir@/idund
+SystemdService=idund.service

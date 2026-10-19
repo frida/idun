@@ -1,6 +1,7 @@
-executable('idund', 'main.vala',
+idund = executable('idund', 'main.vala',
   vala_args: [
     '--pkg=gio-2.0',
+    '--pkg=json-glib-1.0',
     '--pkg=gio-unix-2.0',
     '--pkg=posix',
   ],

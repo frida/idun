@@ -14,28 +14,38 @@ namespace Idun {
 
 		private const uint SPAWN_TIMEOUT = 10000;
 
-		public static async DaemonClient open (SocketAddress endpoint, Cancellable? cancellable) throws Efni.Error, IOError {
-			var client = yield try_connect (endpoint, cancellable);
+		public static async DaemonClient open (string? daemon_path, Cancellable? cancellable) throws Efni.Error, IOError {
+			var client = yield try_connect_to_session_bus (cancellable);
 			if (client == null) {
-				yield spawn (cancellable);
+				var endpoint = Daemon.query_endpoint ();
 				client = yield try_connect (endpoint, cancellable);
-				if (client == null)
-					throw new Efni.Error.SERVER_NOT_RUNNING ("idund did not start listening on %s", describe (endpoint));
-			}
-
-			if (client.service.protocol_version != Daemon.PROTOCOL_VERSION) {
-				if (!client.service.autospawned)
-					throw new Efni.Error.NOT_SUPPORTED ("Incompatible idund is running; please restart it");
-
-				try {
-					yield client.service.shutdown (cancellable);
-				} catch (GLib.Error e) {
+				if (client == null) {
+					yield spawn ((daemon_path != null) ? daemon_path : Daemon.query_installed_path (), cancellable);
+					client = yield try_connect (endpoint, cancellable);
+					if (client == null)
+						throw new Efni.Error.SERVER_NOT_RUNNING ("idund did not start listening");
 				}
-				yield client.close (cancellable);
-
-				return yield open (endpoint, cancellable);
 			}
 
+			if (client.service.protocol_version == Daemon.PROTOCOL_VERSION)
+				return client;
+
+			if (!client.service.autospawned)
+				throw new Efni.Error.NOT_SUPPORTED ("Incompatible idund is running; please restart it");
+
+			try {
+				yield client.service.shutdown (cancellable, null);
+			} catch (GLib.Error e) {
+			}
+			yield client.close (cancellable);
+
+			return yield open (daemon_path, cancellable);
+		}
+
+		public static async DaemonClient connect_to (SocketAddress endpoint, Cancellable? cancellable) throws Efni.Error, IOError {
+			var client = yield try_connect (endpoint, cancellable);
+			if (client == null)
+				throw new Efni.Error.SERVER_NOT_RUNNING ("idund is not running");
 			return client;
 		}
 
@@ -49,6 +59,23 @@ namespace Idun {
 			} catch (GLib.Error e) {
 				if (e is IOError.CANCELLED)
 					throw (IOError) e;
+			}
+		}
+
+		private static async DaemonClient? try_connect_to_session_bus (Cancellable? cancellable) throws IOError {
+			if (Environment.get_variable ("DBUS_SESSION_BUS_ADDRESS") == null)
+				return null;
+
+			try {
+				var connection = yield Bus.get (SESSION, cancellable);
+				DaemonService service = yield connection.get_proxy (Daemon.BUS_NAME, Daemon.OBJECT_PATH, DBusProxyFlags.NONE,
+					cancellable);
+				if (((DBusProxy) service).get_name_owner () == null)
+					return null;
+				return new DaemonClient (connection, service);
+			} catch (GLib.Error e) {
+				cancellable.set_error_if_cancelled ();
+				return null;
 			}
 		}
 
@@ -72,9 +99,7 @@ namespace Idun {
 			}
 		}
 
-		private static async void spawn (Cancellable? cancellable) throws Efni.Error, IOError {
-			string path = locate_daemon ();
-
+		private static async void spawn (string path, Cancellable? cancellable) throws Efni.Error, IOError {
 			Subprocess process;
 			try {
 				process = new Subprocess (STDOUT_PIPE, path, "--background");
@@ -109,21 +134,6 @@ namespace Idun {
 				cancel_source.destroy ();
 			}
 		}
-
-		private static string locate_daemon () throws Efni.Error {
-			if (FileUtils.test (Config.DAEMON_PATH, EXISTS))
-				return Config.DAEMON_PATH;
-
-			string? path = Environment.find_program_in_path ("idund");
-			if (path == null)
-				throw new Efni.Error.NOT_SUPPORTED ("idund not found");
-			return path;
-		}
-
-		private static string describe (SocketAddress endpoint) {
-			var address = endpoint as UnixSocketAddress;
-			return (address != null) ? address.path : endpoint.get_type ().name ();
-		}
 	}
 
 	public sealed class DaemonCoreDeviceBackend : Object, Backend {
@@ -144,7 +154,7 @@ namespace Idun {
 			service.device_detached.connect (on_device_detached);
 
 			try {
-				foreach (var description in yield service.enumerate_devices (cancellable))
+				foreach (var description in yield service.enumerate_devices (cancellable, null))
 					on_device_attached (description);
 			} catch (GLib.Error e) {
 				cancellable.set_error_if_cancelled ();
@@ -298,7 +308,7 @@ namespace Idun {
 		public async void open (Cancellable? cancellable) throws Efni.Error, IOError {
 			HashTable<string, Variant> description;
 			try {
-				description = yield service.open_tunnel (udid, cancellable);
+				description = yield service.open_tunnel (udid, cancellable, null);
 			} catch (GLib.Error e) {
 				Daemon.throw_remote_error (e);
 			}
@@ -319,7 +329,7 @@ namespace Idun {
 
 		public async IOStream open_tcp_connection (uint16 port, Cancellable? cancellable) throws Efni.Error, IOError {
 			try {
-				var socket = yield service.open_tcp_connection (udid, port, cancellable);
+				var socket = yield service.open_tcp_connection (udid, port, cancellable, null);
 				return SocketConnection.factory_create_connection (socket);
 			} catch (GLib.Error e) {
 				Daemon.throw_remote_error (e);
@@ -330,7 +340,7 @@ namespace Idun {
 			try {
 				string local_address;
 				uint16 local_port;
-				var socket = service.open_udp_socket (udid, out local_address, out local_port, null);
+				var socket = service.open_udp_socket (udid, out local_address, out local_port, null, null);
 				return new DaemonUdpSocket (socket, new InetSocketAddress.from_string (local_address, local_port),
 					remote_address);
 			} catch (GLib.Error e) {

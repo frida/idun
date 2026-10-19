@@ -6,11 +6,12 @@ namespace Idun {
 		public signal void device_detached (Device device);
 
 #if HAVE_DAEMON
-		public DaemonPolicy daemon_policy {
+		public string? daemon_path {
 			get;
 			set;
-			default = DaemonPolicy.from_environment ();
 		}
+
+		private bool use_daemon = true;
 #endif
 
 		private State state = CREATED;
@@ -35,13 +36,20 @@ namespace Idun {
 			add_backend (new UsbmuxBackend ());
 			add_backend (new MacOSCoreDeviceBackend ());
 		}
+#elif HAVE_DAEMON
+		internal DeviceMonitor.for_daemon () {
+			use_daemon = false;
+		}
 #endif
 
-		public async void start (Cancellable? cancellable = null) throws IOError {
+		public async void start (Cancellable? cancellable = null) throws Efni.Error, IOError {
+			state = STARTING;
+
 #if !MACOS
 			yield add_portable_backends (cancellable);
+			if (state == STOPPED)
+				return;
 #endif
-			state = STARTING;
 
 			var remaining = backends.size + 1;
 
@@ -78,33 +86,27 @@ namespace Idun {
 		}
 
 #if !MACOS
-		private async void add_portable_backends (Cancellable? cancellable) throws IOError {
+		private async void add_portable_backends (Cancellable? cancellable) throws Efni.Error, IOError {
 #if HAVE_DAEMON
-			if (daemon_policy != NEVER) {
-				var daemon = yield try_open_daemon (cancellable);
-				if (daemon != null) {
-					add_backend (new UsbmuxBackend (null));
-					add_backend (daemon);
+			if (use_daemon) {
+				var client = yield DaemonClient.open (daemon_path, cancellable);
+				if (state == STOPPED) {
+					yield client.close (cancellable);
 					return;
 				}
+				add_backend (new UsbmuxBackend (null));
+				add_backend (new DaemonCoreDeviceBackend (client));
+				return;
 			}
 #endif
 			add_backend (new UsbmuxBackend (pairing_store));
 			add_backend (new PortableCoreDeviceBackend (pairing_store));
 		}
-
-#if HAVE_DAEMON
-		private async DaemonCoreDeviceBackend? try_open_daemon (Cancellable? cancellable) throws IOError {
-			try {
-				return new DaemonCoreDeviceBackend (yield DaemonClient.open (Daemon.query_endpoint (), cancellable));
-			} catch (Efni.Error e) {
-				return null;
-			}
-		}
-#endif
 #endif
 
 		public async void stop (Cancellable? cancellable = null) throws IOError {
+			state = STOPPED;
+
 			var remaining = backends.size + 1;
 
 			NotifyCompleteFunc on_complete = () => {
@@ -130,8 +132,6 @@ namespace Idun {
 			foreach (var device in devices.values)
 				device.close ();
 			devices.clear ();
-
-			state = STOPPED;
 		}
 
 		private async void do_start (Backend backend, Cancellable? cancellable, NotifyCompleteFunc on_complete) {

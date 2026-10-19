@@ -1,0 +1,7 @@
+[Unit]
+Description=Idun Apple device tunnel daemon
+
+[Service]
+Type=dbus
+BusName=io.github.frida.Idun1
+ExecStart=@bindir@/idund

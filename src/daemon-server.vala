@@ -19,23 +19,29 @@ namespace Idun {
 			construct;
 		}
 
-		private DeviceMonitor monitor = new DeviceMonitor () {
-			daemon_policy = NEVER,
-		};
+		public bool serve_session_bus {
+			get;
+			construct;
+		}
+
+		private DeviceMonitor monitor = new DeviceMonitor.for_daemon ();
 		private Gee.Map<string, Device> devices = new Gee.HashMap<string, Device> ();
 		private Gee.Map<string, Tunnel> tunnels = new Gee.HashMap<string, Tunnel> ();
 		private SocketService service = new SocketService ();
 		private Gee.Set<DBusConnection> clients = new Gee.HashSet<DBusConnection> ();
+		private Gee.Map<string, uint> bus_clients = new Gee.HashMap<string, uint> ();
+		private uint bus_name_id;
 		private Gee.Set<UdpRelay> udp_relays = new Gee.HashSet<UdpRelay> ();
 		private DaemonService service_impl;
 		private Source? idle_source;
 		private Cancellable io_cancellable = new Cancellable ();
 
-		public DaemonServer (SocketAddress endpoint, bool autospawned, uint idle_timeout) {
+		public DaemonServer (SocketAddress endpoint, bool autospawned, uint idle_timeout, bool serve_session_bus) {
 			Object (
 				endpoint: endpoint,
 				autospawned: autospawned,
-				idle_timeout: idle_timeout
+				idle_timeout: idle_timeout,
+				serve_session_bus: serve_session_bus
 			);
 		}
 
@@ -59,13 +65,24 @@ namespace Idun {
 			service.incoming.connect (on_incoming);
 			service.start ();
 
+			if (serve_session_bus && Environment.get_variable ("DBUS_SESSION_BUS_ADDRESS") != null)
+				bus_name_id = Bus.own_name (SESSION, Daemon.BUS_NAME, NONE, on_bus_acquired);
+
 			schedule_idle_check ();
 		}
 
 		public async void stop (Cancellable? cancellable) throws IOError {
 			cancel_idle_check ();
 
-			service.stop ();
+			if (bus_name_id != 0) {
+				Bus.unown_name (bus_name_id);
+				bus_name_id = 0;
+			}
+			foreach (var watch_id in bus_clients.values)
+				Bus.unwatch_name (watch_id);
+			bus_clients.clear ();
+
+			stop_listening ();
 			io_cancellable.cancel ();
 
 			foreach (var client in clients.to_array ()) {
@@ -77,7 +94,10 @@ namespace Idun {
 			}
 
 			yield monitor.stop (cancellable);
+		}
 
+		private void stop_listening () {
+			service.stop ();
 			remove_endpoint ();
 		}
 
@@ -143,8 +163,30 @@ namespace Idun {
 			schedule_idle_check ();
 		}
 
+		private void on_bus_acquired (DBusConnection connection) {
+			try {
+				connection.register_object (Daemon.OBJECT_PATH, service_impl);
+			} catch (IOError e) {
+			}
+		}
+
+		private void track_bus_client (BusName? sender) {
+			if (sender == null || bus_clients.has_key (sender))
+				return;
+
+			bus_clients[sender] = Bus.watch_name (SESSION, sender, NONE, null, on_bus_client_vanished);
+			cancel_idle_check ();
+		}
+
+		private void on_bus_client_vanished (DBusConnection connection, string name) {
+			uint watch_id;
+			if (bus_clients.unset (name, out watch_id))
+				Bus.unwatch_name (watch_id);
+			schedule_idle_check ();
+		}
+
 		private void schedule_idle_check () {
-			if (idle_timeout == 0 || !clients.is_empty || idle_source != null)
+			if (idle_timeout == 0 || !clients.is_empty || !bus_clients.is_empty || idle_source != null)
 				return;
 
 			var source = new TimeoutSource.seconds (idle_timeout);
@@ -259,6 +301,13 @@ namespace Idun {
 		}
 
 		private async void shutdown () {
+			foreach (var client in clients.to_array ()) {
+				try {
+					yield client.flush (null);
+				} catch (GLib.Error e) {
+				}
+			}
+
 			try {
 				yield stop (null);
 			} catch (IOError e) {
@@ -285,25 +334,36 @@ namespace Idun {
 				this.server = server;
 			}
 
-			public async HashTable<string, Variant>[] enumerate_devices (Cancellable? cancellable) throws GLib.Error {
+			public async HashTable<string, Variant>[] enumerate_devices (Cancellable? cancellable, BusName? sender)
+					throws GLib.Error {
+				server.track_bus_client (sender);
 				return server.enumerate_devices ();
 			}
 
-			public async HashTable<string, Variant> open_tunnel (string udid, Cancellable? cancellable) throws GLib.Error {
+			public async HashTable<string, Variant> open_tunnel (string udid, Cancellable? cancellable, BusName? sender)
+					throws GLib.Error {
+				server.track_bus_client (sender);
 				return Daemon.describe_tunnel (yield server.open_tunnel (udid, cancellable));
 			}
 
-			public async Socket open_tcp_connection (string udid, uint16 port, Cancellable? cancellable) throws GLib.Error {
+			public async Socket open_tcp_connection (string udid, uint16 port, Cancellable? cancellable, BusName? sender)
+					throws GLib.Error {
+				server.track_bus_client (sender);
 				return yield server.open_tcp_connection (udid, port, cancellable);
 			}
 
-			public Socket open_udp_socket (string udid, out string local_address, out uint16 local_port, Cancellable? cancellable)
-					throws GLib.Error {
+			public Socket open_udp_socket (string udid, out string local_address, out uint16 local_port, Cancellable? cancellable,
+					BusName? sender) throws GLib.Error {
+				server.track_bus_client (sender);
 				return server.open_udp_socket (udid, out local_address, out local_port);
 			}
 
-			public async void shutdown (Cancellable? cancellable) throws GLib.Error {
-				server.shutdown.begin ();
+			public async void shutdown (Cancellable? cancellable, BusName? sender) throws GLib.Error {
+				server.stop_listening ();
+				Idle.add (() => {
+					server.shutdown.begin ();
+					return Source.REMOVE;
+				});
 			}
 		}
 

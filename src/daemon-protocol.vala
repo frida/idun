@@ -1,22 +1,6 @@
 using Efni;
 
 namespace Idun {
-	public enum DaemonPolicy {
-		AUTO,
-		NEVER;
-
-		public static DaemonPolicy from_environment () {
-			unowned string? nick = Environment.get_variable ("IDUN_DAEMON");
-			if (nick == null)
-				return AUTO;
-			try {
-				return Marshal.enum_from_nick<DaemonPolicy> (nick);
-			} catch (Efni.Error e) {
-				return AUTO;
-			}
-		}
-	}
-
 	[DBus (name = "io.github.frida.Idun1.Daemon")]
 	public interface DaemonService : Object {
 		public abstract uint protocol_version {
@@ -30,28 +14,47 @@ namespace Idun {
 		public signal void device_attached (HashTable<string, Variant> description);
 		public signal void device_detached (string udid);
 
-		public abstract async HashTable<string, Variant>[] enumerate_devices (Cancellable? cancellable) throws GLib.Error;
-		public abstract async HashTable<string, Variant> open_tunnel (string udid, Cancellable? cancellable) throws GLib.Error;
-		public abstract async Socket open_tcp_connection (string udid, uint16 port, Cancellable? cancellable) throws GLib.Error;
+		public abstract async HashTable<string, Variant>[] enumerate_devices (Cancellable? cancellable, BusName? sender)
+			throws GLib.Error;
+		public abstract async HashTable<string, Variant> open_tunnel (string udid, Cancellable? cancellable, BusName? sender)
+			throws GLib.Error;
+		public abstract async Socket open_tcp_connection (string udid, uint16 port, Cancellable? cancellable, BusName? sender)
+			throws GLib.Error;
 		public abstract Socket open_udp_socket (string udid, out string local_address, out uint16 local_port,
-			Cancellable? cancellable) throws GLib.Error;
-		public abstract async void shutdown (Cancellable? cancellable) throws GLib.Error;
+			Cancellable? cancellable, BusName? sender) throws GLib.Error;
+		public abstract async void shutdown (Cancellable? cancellable, BusName? sender) throws GLib.Error;
 	}
 
 	namespace Daemon {
 		public const uint PROTOCOL_VERSION = 1;
+		public const string BUS_NAME = "io.github.frida.Idun1";
 		public const string OBJECT_PATH = "/io/github/frida/Idun1/Daemon";
 
-		public SocketAddress query_endpoint () throws Efni.Error {
-			return new UnixSocketAddress (Path.build_filename (query_runtime_directory ().get_path (), "control"));
+		public SocketAddress query_endpoint () {
+			return new UnixSocketAddress (Path.build_filename (query_runtime_directory (), "control"));
 		}
 
-		public File query_runtime_directory () throws Efni.Error {
+		public string query_runtime_directory () {
 			unowned string? runtime_dir = Environment.get_variable ("XDG_RUNTIME_DIR");
 			if (runtime_dir != null)
-				return File.new_build_filename (runtime_dir, "idun");
-			return File.new_build_filename (Environment.get_tmp_dir (), "idun-%u".printf ((uint) Posix.getuid ()));
+				return Path.build_filename (runtime_dir, "idun");
+			return Path.build_filename (Environment.get_tmp_dir (), "idun-%u".printf ((uint) Posix.getuid ()));
 		}
+
+		public string query_installed_path () {
+			string module_dir = Path.get_dirname (_query_library_path ());
+
+			string basename = Path.get_basename (module_dir);
+			if (basename == "bin" || basename == "sbin")
+				return Path.build_filename (module_dir, "idund");
+
+			string prefix = module_dir.has_suffix (Config.LIBDIR)
+				? module_dir[:module_dir.length - Config.LIBDIR.length]
+				: Path.get_dirname (module_dir);
+			return Path.build_filename (prefix, Config.BINDIR, "idund");
+		}
+
+		public extern string _query_library_path ();
 
 		public HashTable<string, Variant> describe_device (Device device) {
 			var description = new HashTable<string, Variant> (str_hash, str_equal);

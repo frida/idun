@@ -36,6 +36,7 @@ endif
 if build_daemon
   idun_sources += [
     'daemon-protocol.vala',
+    'daemon-glue.c',
     'daemon-client.vala',
     'daemon-server.vala',
   ]

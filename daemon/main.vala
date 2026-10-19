@@ -24,13 +24,7 @@ namespace Idun.DaemonMain {
 
 		var loop = new MainLoop ();
 
-		DaemonServer server;
-		try {
-			server = new DaemonServer (Daemon.query_endpoint (), background, (background) ? idle_timeout : 0);
-		} catch (Efni.Error e) {
-			printerr ("%s\n", e.message);
-			return 1;
-		}
+		var server = new DaemonServer (Daemon.query_endpoint (), background, (uint) idle_timeout, true);
 		server.idle.connect (() => stop_and_quit (server, loop));
 
 		int exit_code = 0;

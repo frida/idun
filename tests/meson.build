@@ -27,6 +27,12 @@ runner = executable('idun-tests', test_sources,
   dependencies: test_deps,
 )
 
+test_env = {}
+if build_daemon
+  test_env += {'IDUN_TEST_IDUND': idund.full_path()}
+endif
+
 test('idun', runner,
+  env: test_env,
   timeout: 120,
 )

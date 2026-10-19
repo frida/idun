@@ -187,7 +187,8 @@ if build_daemon
 endif
 
 cdata = configuration_data()
-cdata.set_quoted('IDUN_CONFIG_DAEMON_PATH', get_option('prefix') / get_option('bindir') / 'idund')
+cdata.set_quoted('IDUN_CONFIG_LIBDIR', get_option('libdir'))
+cdata.set_quoted('IDUN_CONFIG_BINDIR', get_option('bindir'))
 configure_file(output: 'idun-config.h', configuration: cdata)
 
 tests_opt = get_option('tests')
@@ -200,6 +201,7 @@ endif
 subdir('src')
 if build_daemon
   subdir('daemon')
+  subdir('data')
 endif
 if build_tests
   subdir('tests')

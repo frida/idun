@@ -11,17 +11,22 @@ namespace Idun.DaemonTest {
 			var h = new Harness ((h) => unknown_device_is_rejected.begin (h as Harness));
 			h.run ();
 		});
+
+		GLib.Test.add_func ("/Daemon/monitor-spawns-daemon", () => {
+			var h = new Harness ((h) => monitor_spawns_daemon.begin (h as Harness));
+			h.run ();
+		});
 	}
 
 	private async void client_connects_and_enumerates (Harness h) {
 		var fixture = yield Fixture.create ();
 		try {
-			var client = yield DaemonClient.open (fixture.endpoint, null);
+			var client = yield DaemonClient.connect_to (fixture.endpoint, null);
 
 			assert_true (client.service.protocol_version == Daemon.PROTOCOL_VERSION);
 			assert_false (client.service.autospawned);
 
-			var devices = yield client.service.enumerate_devices (null);
+			var devices = yield client.service.enumerate_devices (null, null);
 			foreach (var description in devices)
 				assert_nonnull (description["udid"]);
 
@@ -39,10 +44,10 @@ namespace Idun.DaemonTest {
 	private async void unknown_device_is_rejected (Harness h) {
 		var fixture = yield Fixture.create ();
 		try {
-			var client = yield DaemonClient.open (fixture.endpoint, null);
+			var client = yield DaemonClient.connect_to (fixture.endpoint, null);
 
 			try {
-				yield client.service.open_tunnel ("00000000-0000000000000000", null);
+				yield client.service.open_tunnel ("00000000-0000000000000000", null, null);
 				assert_not_reached ();
 			} catch (GLib.Error e) {
 				try {
@@ -65,6 +70,34 @@ namespace Idun.DaemonTest {
 		h.done ();
 	}
 
+	private async void monitor_spawns_daemon (Harness h) {
+		string daemon_path = Environment.get_variable ("IDUN_TEST_IDUND");
+		string runtime_dir = "";
+		try {
+			runtime_dir = DirUtils.make_tmp ("idun-test-XXXXXX");
+			Environment.set_variable ("XDG_RUNTIME_DIR", runtime_dir, true);
+			Environment.unset_variable ("DBUS_SESSION_BUS_ADDRESS");
+
+			var monitor = new DeviceMonitor ();
+			monitor.daemon_path = daemon_path;
+			yield monitor.start (null);
+			yield monitor.stop (null);
+
+			var client = yield DaemonClient.open (daemon_path, null);
+			assert_true (client.service.autospawned);
+			yield client.service.shutdown (null, null);
+			yield client.close (null);
+		} catch (GLib.Error e) {
+			printerr ("\nFAIL: %s\n", e.message);
+			assert_not_reached ();
+		} finally {
+			DirUtils.remove (Path.build_filename (runtime_dir, "idun"));
+			DirUtils.remove (runtime_dir);
+		}
+
+		h.done ();
+	}
+
 	private class Fixture {
 		public SocketAddress endpoint;
 		public DaemonServer server;
@@ -75,7 +108,7 @@ namespace Idun.DaemonTest {
 			try {
 				fixture.directory = DirUtils.make_tmp ("idun-test-XXXXXX");
 				fixture.endpoint = new UnixSocketAddress (Path.build_filename (fixture.directory, "control"));
-				fixture.server = new DaemonServer (fixture.endpoint, false, 0);
+				fixture.server = new DaemonServer (fixture.endpoint, false, 0, false);
 				yield fixture.server.start (null);
 			} catch (GLib.Error e) {
 				printerr ("\nFAIL: %s\n", e.message);
