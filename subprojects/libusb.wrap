@@ -1,0 +1,8 @@
+[wrap-git]
+url = https://github.com/frida/libusb.git
+revision = 23d5a2cdc55aa4f0895960d08528e5aa13e7f7e2
+depth = 1
+
+[provide]
+dependency_names = libusb-1.0
+
