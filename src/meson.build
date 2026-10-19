@@ -28,9 +28,14 @@ if host_os != 'macos'
     'tunnel.vala',
     'tls-psk.vala',
     'virtual-network-stack.vala',
+    'lwip-network-stack.vala',
     'usb.vala',
     'ncm.vala',
   ]
+endif
+
+if host_os == 'linux'
+  idun_sources += 'tun-network-stack.vala'
 endif
 
 if build_daemon

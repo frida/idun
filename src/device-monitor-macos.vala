@@ -292,6 +292,12 @@ namespace Idun {
 			}
 		}
 
+		public NetworkStack netstack {
+			get {
+				return tunnel_netstack;
+			}
+		}
+
 		public Darwin.Xpc.Uuid? assertion_identifier {
 			get {
 				return _assertion_identifier;

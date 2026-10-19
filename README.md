@@ -31,6 +31,14 @@ application supplies, and the daemon exits once it has been idle
 for a while. On macOS the system's own tunnel is used instead;
 Windows support for the daemon is still to come.
 
+When idund may create TUN interfaces on Linux, which takes
+CAP_NET_ADMIN, the tunnel becomes a kernel network interface and
+clients talk to the device through ordinary sockets. Grant it with
+`setcap cap_net_admin+ep idund` on an installed daemon. Without it,
+and always on Windows, the tunnel runs on a userspace network stack
+inside the daemon, which relays connections to its clients as socket
+pairs.
+
 ## Building
 
 ```sh

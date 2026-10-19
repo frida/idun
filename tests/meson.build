@@ -10,6 +10,10 @@ if build_daemon
   test_sources += 'test-daemon.vala'
 endif
 
+if host_os == 'linux'
+  test_sources += 'test-network-stack.vala'
+endif
+
 test_deps = [glib_dep, gobject_dep, gio_dep, gee_dep, json_glib_dep, efni_dep, idun_dep] + platform_deps
 
 if host_os_family == 'darwin'

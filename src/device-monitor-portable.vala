@@ -38,6 +38,12 @@ namespace Idun {
 			}
 		}
 
+		public NetworkStack netstack {
+			get {
+				return tunnel_connection.tunnel_netstack;
+			}
+		}
+
 		private UsbNcmDriver? ncm;
 		private TcpTunnelConnection? tunnel_connection;
 		private DiscoveryService? _discovery_service;
@@ -1140,6 +1146,12 @@ namespace Idun {
 			}
 		}
 
+		public NetworkStack netstack {
+			get {
+				return tunnel_connection.tunnel_netstack;
+			}
+		}
+
 		private UsbNcmDriver? ncm;
 		private TunnelConnection? tunnel_connection;
 		private DiscoveryService? _discovery_service;
@@ -1357,6 +1369,12 @@ namespace Idun {
 		public uint16 rsd_port {
 			get {
 				return tunnel_connection.remote_rsd_port;
+			}
+		}
+
+		public NetworkStack netstack {
+			get {
+				return tunnel_connection.tunnel_netstack;
 			}
 		}
 

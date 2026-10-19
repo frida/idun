@@ -75,6 +75,12 @@ namespace Idun {
 			Bytes? key = tunnel.remote_unlock_host_key;
 			if (key != null)
 				description["remote-unlock-host-key"] = new Variant.from_bytes (VariantType.BYTESTRING, key, true);
+
+			var netstack = tunnel.netstack;
+			description["local-address"] = netstack.listener_ip.to_string ();
+			description["scope-id"] = (uint32) netstack.scope_id;
+			description["transport"] = (netstack is LwipNetworkStack) ? "relay" : "direct";
+
 			return description;
 		}
 

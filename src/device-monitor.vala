@@ -525,6 +525,10 @@ namespace Idun {
 			get;
 		}
 
+		public abstract NetworkStack netstack {
+			get;
+		}
+
 		public abstract async void close (Cancellable? cancellable) throws IOError;
 		public abstract async IOStream open_tcp_connection (uint16 port, Cancellable? cancellable) throws Efni.Error, IOError;
 		public abstract UdpSocket create_udp_socket () throws Efni.Error;

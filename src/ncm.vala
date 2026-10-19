@@ -161,7 +161,7 @@ namespace Idun {
 			Usb.check (handle.set_interface_alt_setting (config.data_iface, config.data_altsetting),
 				"Failed to set USB interface alt setting");
 
-			_netstack = new VirtualNetworkStack (new Bytes (mac_address), null, 1500);
+			_netstack = VirtualNetworkStack.create (new Bytes (mac_address), null, 1500);
 			_netstack.outgoing_datagrams.connect (on_netif_outgoing_datagrams);
 
 			process_incoming_datagrams.begin ();

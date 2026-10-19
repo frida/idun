@@ -295,10 +295,17 @@ namespace Idun {
 			}
 		}
 
+		public NetworkStack netstack {
+			get {
+				return _netstack;
+			}
+		}
+
 		private InetAddress remote_address;
 		private uint16 _rsd_port;
 		private int64 _opened_at;
 		private Bytes? _remote_unlock_host_key;
+		private NetworkStack? _netstack;
 		private DiscoveryService? _discovery;
 
 		public DaemonTunnel (string udid, DaemonService service) {
@@ -320,6 +327,13 @@ namespace Idun {
 			if (key != null)
 				_remote_unlock_host_key = key.get_data_as_bytes ();
 
+			var local_address = new InetAddress.from_string (description["local-address"].get_string ());
+			uint scope_id = description["scope-id"].get_uint32 ();
+			if (description["transport"].get_string () == "direct")
+				_netstack = new SystemNetworkStack (local_address, scope_id);
+			else
+				_netstack = new DaemonRelayNetworkStack (udid, service, local_address, scope_id, remote_address);
+
 			_discovery = yield open_discovery_service (cancellable);
 		}
 
@@ -328,8 +342,75 @@ namespace Idun {
 		}
 
 		public async IOStream open_tcp_connection (uint16 port, Cancellable? cancellable) throws Efni.Error, IOError {
+			return yield _netstack.open_tcp_connection (make_remote_address (port), cancellable);
+		}
+
+		public UdpSocket create_udp_socket () throws Efni.Error {
+			var socket = _netstack.create_udp_socket ();
+			socket.bind ((InetSocketAddress) Object.new (typeof (InetSocketAddress),
+				address: _netstack.listener_ip,
+				scope_id: _netstack.scope_id
+			));
+			return socket;
+		}
+
+		public InetSocketAddress make_remote_address (uint16 port) {
+			return (InetSocketAddress) Object.new (typeof (InetSocketAddress),
+				address: remote_address,
+				port: port,
+				scope_id: _netstack.scope_id
+			);
+		}
+
+		public async void refresh_discovery (Cancellable? cancellable) throws Efni.Error, IOError {
+			var disco = yield open_discovery_service (cancellable);
+			_discovery.close ();
+			_discovery = disco;
+		}
+
+		private async DiscoveryService open_discovery_service (Cancellable? cancellable) throws Efni.Error, IOError {
+			return yield DiscoveryService.open (yield open_tcp_connection (rsd_port, cancellable), cancellable);
+		}
+	}
+
+	private sealed class DaemonRelayNetworkStack : Object, NetworkStack {
+		public string udid {
+			get;
+			construct;
+		}
+
+		public DaemonService service {
+			get;
+			construct;
+		}
+
+		public InetAddress listener_ip {
+			get {
+				return _listener_ip;
+			}
+		}
+
+		public uint scope_id {
+			get {
+				return _scope_id;
+			}
+		}
+
+		private InetAddress _listener_ip;
+		private uint _scope_id;
+		private InetAddress remote_address;
+
+		public DaemonRelayNetworkStack (string udid, DaemonService service, InetAddress listener_ip, uint scope_id,
+				InetAddress remote_address) {
+			Object (udid: udid, service: service);
+			_listener_ip = listener_ip;
+			_scope_id = scope_id;
+			this.remote_address = remote_address;
+		}
+
+		public async IOStream open_tcp_connection (InetSocketAddress address, Cancellable? cancellable) throws Efni.Error, IOError {
 			try {
-				var socket = yield service.open_tcp_connection (udid, port, cancellable, null);
+				var socket = yield service.open_tcp_connection (udid, address.get_port (), cancellable, null);
 				return SocketConnection.factory_create_connection (socket);
 			} catch (GLib.Error e) {
 				Daemon.throw_remote_error (e);
@@ -349,20 +430,6 @@ namespace Idun {
 					throw (Efni.Error) e;
 				throw new Efni.Error.TRANSPORT ("%s", e.message);
 			}
-		}
-
-		public InetSocketAddress make_remote_address (uint16 port) {
-			return new InetSocketAddress (remote_address, port);
-		}
-
-		public async void refresh_discovery (Cancellable? cancellable) throws Efni.Error, IOError {
-			var disco = yield open_discovery_service (cancellable);
-			_discovery.close ();
-			_discovery = disco;
-		}
-
-		private async DiscoveryService open_discovery_service (Cancellable? cancellable) throws Efni.Error, IOError {
-			return yield DiscoveryService.open (yield open_tcp_connection (rsd_port, cancellable), cancellable);
 		}
 	}
 
@@ -387,7 +454,6 @@ namespace Idun {
 		}
 
 		public void bind (InetSocketAddress address) throws Efni.Error {
-			throw new Efni.Error.INVALID_OPERATION ("Already bound");
 		}
 
 		public InetSocketAddress get_local_address () throws Efni.Error {

@@ -126,7 +126,7 @@ elif host_os_family == 'darwin'
     platform_link_args += ['-Wl,-framework,AppKit']
   endif
 elif host_os_family == 'linux'
-  platform_vala_args += '--pkg=linux'
+  platform_vala_args += ['--pkg=linux', '--pkg=linux-if']
 endif
 
 local_vapidir = meson.current_source_dir() / 'vapi'

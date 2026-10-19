@@ -8,6 +8,9 @@ namespace Idun.Test {
 #if HAVE_DAEMON
 		Idun.DaemonTest.add_tests ();
 #endif
+#if LINUX
+		Idun.NetworkStackTest.add_tests ();
+#endif
 
 		GLib.Test.run ();
 	}

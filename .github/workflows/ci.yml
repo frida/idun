@@ -37,3 +37,6 @@ jobs:
           make
       - name: Test
         run: make test
+      - name: Test TUN support
+        if: ${{ startsWith(matrix.id, 'linux-') }}
+        run: sudo build/tests/idun-tests -p /NetworkStack

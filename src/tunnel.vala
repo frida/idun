@@ -165,7 +165,7 @@ namespace Idun {
 			tunnel_params = TunnelParameters.from_json (yield read_message (cancellable));
 			flush_trigger_datagram = make_minimal_dummy_ipv6_datagram (tunnel_params.address, tunnel_params.server_address);
 
-			_tunnel_netstack = new VirtualNetworkStack (null, tunnel_params.address, tunnel_params.mtu);
+			_tunnel_netstack = VirtualNetworkStack.create (null, tunnel_params.address, tunnel_params.mtu);
 			_tunnel_netstack.outgoing_datagrams.connect (post_batch);
 
 			process_incoming_messages.begin ();
@@ -616,7 +616,7 @@ namespace Idun {
 		private void on_control_stream_response (string json) throws Efni.Error {
 			tunnel_params = TunnelParameters.from_json (new JsonObjectReader (json));
 
-			_tunnel_netstack = new VirtualNetworkStack (null, tunnel_params.address, tunnel_params.mtu);
+			_tunnel_netstack = VirtualNetworkStack.create (null, tunnel_params.address, tunnel_params.mtu);
 			_tunnel_netstack.outgoing_datagrams.connect (send_datagrams);
 
 			establish_request.resolve (true);
