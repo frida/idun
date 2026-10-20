@@ -20,6 +20,7 @@ idun_sources = [
   'cs-signature.vala',
   'network-stack.vala',
   'core-device-info.vala',
+  'screen-capture.vala',
 ]
 
 if host_os != 'macos'
