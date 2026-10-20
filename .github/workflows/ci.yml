@@ -45,6 +45,8 @@ jobs:
     runs-on: ubuntu-latest
     container: archlinux:latest
     steps:
+      - name: Show distro
+        run: cat /etc/os-release
       - name: Install build tools
         run: |
           pacman -Syu --noconfirm --needed base-devel git python sudo
@@ -69,18 +71,27 @@ jobs:
           sed "s|git+\$url.git|git+file://$GITHUB_WORKSPACE/efni|" ${GITHUB_WORKSPACE}/efni/packaging/arch/PKGBUILD > /tmp/efni/PKGBUILD
           chown builder /tmp/efni/PKGBUILD
           cd /tmp/efni && sudo -u builder makepkg -s --noconfirm
-          pacman -U --noconfirm /tmp/efni/efni-r*.pkg.tar.zst
+          pacman -U --noconfirm /tmp/efni/efni-[0-9]*.pkg.tar.zst
       - name: Package
         run: |
           install -d -o builder /tmp/idun
           sed "s|git+\$url.git|git+file://$GITHUB_WORKSPACE|" ${GITHUB_WORKSPACE}/packaging/arch/PKGBUILD > /tmp/idun/PKGBUILD
           chown builder /tmp/idun/PKGBUILD
           cd /tmp/idun && sudo -u builder makepkg -s --noconfirm
+          install -d $GITHUB_WORKSPACE/dist
+          find /tmp/idun -maxdepth 1 -name '*.pkg.tar.zst' ! -name '*-debug-*' -exec cp {} $GITHUB_WORKSPACE/dist/ \;
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-arch
+          path: dist/
 
   package-fedora:
     runs-on: ubuntu-latest
     container: fedora:latest
     steps:
+      - name: Show distro
+        run: cat /etc/os-release
       - name: Install build tools
         run: |
           dnf install -y dnf-plugins-core rpm-build rpmdevtools git python3 xz
@@ -115,6 +126,13 @@ jobs:
           (cd ${GITHUB_WORKSPACE} && git ls-files --recurse-submodules -z | tar --null -T - --transform "s,^,idun-$ver/," -cJf ~/rpmbuild/SOURCES/idun-$ver.tar.xz)
           dnf builddep -y ${GITHUB_WORKSPACE}/packaging/fedora/idun.spec
           rpmbuild -bb ${GITHUB_WORKSPACE}/packaging/fedora/idun.spec
+          install -d $GITHUB_WORKSPACE/dist
+          find ~/rpmbuild/RPMS -name '*.rpm' ! -name '*-debuginfo-*' ! -name '*-debugsource-*' ! -name 'efni*' -exec cp {} $GITHUB_WORKSPACE/dist/ \;
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-fedora
+          path: dist/
 
   package-debian:
     runs-on: ubuntu-latest
@@ -122,6 +140,8 @@ jobs:
     env:
       DEBIAN_FRONTEND: noninteractive
     steps:
+      - name: Show distro
+        run: cat /etc/os-release
       - name: Install build tools
         run: |
           apt-get update
@@ -153,3 +173,27 @@ jobs:
           python3 releng/deps.py sync toolchain linux-x86_64 toolchain/linux-x86_64
           apt-get build-dep -y ./
           dpkg-buildpackage -us -uc -b
+          install -d $GITHUB_WORKSPACE/dist
+          cp $GITHUB_WORKSPACE/../*.deb $GITHUB_WORKSPACE/dist/
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-debian
+          path: dist/
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [native, package-arch, package-fedora, package-debian]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes dist/*
