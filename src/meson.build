@@ -105,7 +105,7 @@ if build_typelib
     command: [
       gir_compiler,
       '--output', '@OUTPUT@',
-      '--includedir=' + girdir,
+      '--includedir=' + gi_girdir,
       '--includedir=' + efni_dep.get_variable('girdir'),
       meson.current_build_dir() / idun_gir_name,
     ],

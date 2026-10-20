@@ -170,18 +170,16 @@ if optimize_for_prod
 endif
 
 gi_dep = dependency('gobject-introspection-1.0', required: false)
-if gi_dep.found()
-  girdir = gi_dep.get_variable('girdir')
-  typelibdir = gi_dep.get_variable('typelibdir')
-else
-  girdir = get_option('prefix') / get_option('datadir') / 'gir-1.0'
-  typelibdir = get_option('prefix') / get_option('libdir') / 'girepository-1.0'
-endif
+girdir = get_option('prefix') / get_option('datadir') / 'gir-1.0'
+typelibdir = get_option('prefix') / get_option('libdir') / 'girepository-1.0'
 gir_compiler = find_program('gi-compile-repository', 'g-ir-compiler', required: false)
-build_typelib = gir_compiler.found()
-foreach gir : ['Gio-2.0.gir', 'Gee-0.8.gir', 'Json-1.0.gir']
-  build_typelib = build_typelib and fs.exists(girdir / gir)
-endforeach
+build_typelib = gi_dep.found() and gir_compiler.found()
+if build_typelib
+  gi_girdir = gi_dep.get_variable('girdir')
+  foreach gir : ['Gio-2.0.gir', 'Gee-0.8.gir', 'Json-1.0.gir']
+    build_typelib = build_typelib and fs.exists(gi_girdir / gir)
+  endforeach
+endif
 vapidir = get_option('prefix') / get_option('datadir') / 'vala' / 'vapi'
 header_install_dir = get_option('includedir') / f'idun-@api_version@'
 
