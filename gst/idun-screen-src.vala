@@ -1,18 +1,22 @@
 namespace Idun {
 	public class ScreenSrc : Gst.Bin {
-		public DisplayStream stream {
+		public DisplayStream? stream {
 			get {
 				return _stream;
 			}
 			set {
 				_stream = value;
-				if (_stream != null && session == null)
-					assemble ();
 			}
 		}
 
-		private DisplayStream _stream;
+		public string? udid {
+			get;
+			set;
+		}
 
+		private DisplayStream? _stream;
+
+		private Gst.GhostPad src_pad;
 		private Gst.App.Src rtp_src;
 		private Gst.App.Src rtcp_src;
 		private Gst.App.Sink rtcp_sink;
@@ -21,6 +25,15 @@ namespace Idun {
 		private Gst.Element output;
 		private ulong rtp_handler;
 		private ulong rtcp_handler;
+		private ulong codec_data_handler;
+
+		private Thread<void>? worker;
+		private MainContext? worker_context;
+		private MainLoop? worker_loop;
+		private DeviceMonitor? monitor;
+		private Cancellable? io_cancellable;
+		private bool opening = false;
+		private SourceFunc? open_wait;
 
 		private const int RTP_PROFILE_AVPF = 3;
 
@@ -31,23 +44,10 @@ namespace Idun {
 				"Ole André Vadla Ravnås <oleavr@frida.re>");
 		}
 
-		public override Gst.StateChangeReturn change_state (Gst.StateChange transition) {
-			if (transition == NULL_TO_READY) {
-				rtp_handler = _stream.rtp.connect (on_rtp);
-				rtcp_handler = _stream.rtcp.connect (on_rtcp);
-			}
+		construct {
+			src_pad = new Gst.GhostPad.no_target_from_template ("src", get_pad_template ("src"));
+			add_pad (src_pad);
 
-			Gst.StateChangeReturn result = base.change_state (transition);
-
-			if (transition == READY_TO_NULL) {
-				_stream.disconnect (rtp_handler);
-				_stream.disconnect (rtcp_handler);
-			}
-
-			return result;
-		}
-
-		private void assemble () {
 			rtp_src = (Gst.App.Src) Gst.ElementFactory.make ("appsrc", "rtp_src");
 			rtcp_src = (Gst.App.Src) Gst.ElementFactory.make ("appsrc", "rtcp_src");
 			rtcp_sink = (Gst.App.Sink) Gst.ElementFactory.make ("appsink", "rtcp_sink");
@@ -55,7 +55,6 @@ namespace Idun {
 			depayloader = Gst.ElementFactory.make ("rtph264depay", "depayloader");
 			output = Gst.ElementFactory.make ("queue", "output");
 
-			rtp_src.caps = describe_payload ();
 			rtp_src.set ("is-live", true, "format", Gst.Format.TIME, "do-timestamp", true);
 			rtcp_src.caps = new Gst.Caps.empty_simple ("application/x-rtcp");
 			rtcp_src.set ("is-live", true);
@@ -73,9 +72,132 @@ namespace Idun {
 			session.pad_added.connect (on_rtp_pad_added);
 			rtcp_sink.new_sample.connect (on_rtcp_ready);
 
-			var ghost = new Gst.GhostPad.from_template ("src", output.get_static_pad ("src"), get_pad_template ("src"));
-			ghost.set_active (true);
-			add_pad (ghost);
+			src_pad.set_target (output.get_static_pad ("src"));
+		}
+
+		public override Gst.StateChangeReturn change_state (Gst.StateChange transition) {
+			if (transition == NULL_TO_READY) {
+				if (_stream != null)
+					attach_stream ();
+				else
+					start_worker ();
+			}
+
+			Gst.StateChangeReturn result = base.change_state (transition);
+
+			if (transition == READY_TO_NULL) {
+				if (worker != null)
+					stop_worker ();
+				else
+					detach_stream ();
+			}
+
+			return result;
+		}
+
+		private void start_worker () {
+			worker_context = new MainContext ();
+			worker_loop = new MainLoop (worker_context);
+			io_cancellable = new Cancellable ();
+			worker = new Thread<void> ("idun-screen-src", run_worker);
+		}
+
+		private void run_worker () {
+			worker_context.push_thread_default ();
+
+			open_stream.begin ();
+			worker_loop.run ();
+
+			worker_context.pop_thread_default ();
+		}
+
+		private async void open_stream () {
+			opening = true;
+
+			try {
+				monitor = new DeviceMonitor ();
+#if HAVE_DAEMON
+				string? idund = Environment.get_variable ("IDUND");
+				if (idund != null)
+					monitor.set_daemon_locator (() => idund);
+#endif
+
+				string? wanted = udid;
+				Device device = (wanted != null)
+					? yield monitor.get_device_by_udid (wanted, -1, io_cancellable)
+					: yield monitor.get_device (d => true, -1, io_cancellable);
+				_stream = yield DisplayStream.open (device, io_cancellable);
+
+				attach_stream ();
+			} catch (GLib.Error e) {
+				if (!(e is IOError.CANCELLED)) {
+					message_full (ERROR, Gst.ResourceError.quark (), Gst.ResourceError.OPEN_READ,
+						"Failed to open display stream: %s".printf (e.message), null,
+						GLib.Log.FILE, GLib.Log.METHOD, GLib.Log.LINE);
+				}
+			}
+
+			opening = false;
+
+			if (open_wait != null) {
+				var resume = (owned) open_wait;
+				resume ();
+			}
+		}
+
+		private void attach_stream () {
+			rtp_src.caps = describe_payload ();
+			rtp_handler = _stream.rtp.connect (on_rtp);
+			rtcp_handler = _stream.rtcp.connect (on_rtcp);
+			codec_data_handler = _stream.notify["codec-data"].connect (on_codec_data_changed);
+		}
+
+		private void stop_worker () {
+			var source = new IdleSource ();
+			source.set_callback (() => {
+				teardown.begin ();
+				return Source.REMOVE;
+			});
+			source.attach (worker_context);
+
+			worker.join ();
+
+			worker = null;
+			worker_context = null;
+			worker_loop = null;
+			monitor = null;
+			io_cancellable = null;
+			_stream = null;
+		}
+
+		private async void teardown () {
+			io_cancellable.cancel ();
+
+			if (opening) {
+				open_wait = teardown.callback;
+				yield;
+			}
+
+			if (_stream != null) {
+				detach_stream ();
+				try {
+					yield _stream.close ();
+				} catch (IOError e) {
+				}
+			}
+
+			try {
+				yield monitor.stop ();
+			} catch (IOError e) {
+			}
+
+			worker_loop.quit ();
+		}
+
+		private void detach_stream () {
+			_stream.disconnect (rtp_handler);
+			_stream.disconnect (rtcp_handler);
+			_stream.disconnect (codec_data_handler);
 		}
 
 		private void on_rtp (Bytes data) {
@@ -84,6 +206,10 @@ namespace Idun {
 
 		private void on_rtcp (Bytes data) {
 			rtcp_src.push_buffer (new Gst.Buffer.wrapped_bytes (data));
+		}
+
+		private void on_codec_data_changed () {
+			rtp_src.caps = describe_payload ();
 		}
 
 		private static Gst.Caps on_request_pt_map (Gst.Element session, uint session_id, uint pt, ScreenSrc self) {
@@ -112,13 +238,26 @@ namespace Idun {
 		}
 
 		private Gst.Caps describe_payload () {
-			return new Gst.Caps.simple ("application/x-rtp",
+			var caps = new Gst.Caps.simple ("application/x-rtp",
 				"media", typeof (string), "video",
 				"clock-rate", typeof (int), (int) _stream.clock_rate,
 				"encoding-name", typeof (string), "H264",
 				"payload", typeof (int), (int) _stream.payload_type,
 				"ssrc", typeof (uint), _stream.remote_ssrc,
 				"rtcp-fb-nack-pli", typeof (bool), true);
+
+			Gee.List<Bytes> sets = _stream.parameter_sets;
+			if (!sets.is_empty) {
+				var sprop = new StringBuilder ();
+				foreach (Bytes nal in sets) {
+					if (sprop.len != 0)
+						sprop.append_c (',');
+					sprop.append (Base64.encode (nal.get_data ()));
+				}
+				caps.set_simple ("sprop-parameter-sets", typeof (string), sprop.str);
+			}
+
+			return caps;
 		}
 	}
 

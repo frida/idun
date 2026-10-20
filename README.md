@@ -60,6 +60,10 @@ raw RTP/RTCP datagrams to GStreamer, which owns the whole RTP stack. The
 gst-launch-1.0 idunscreensrc ! h264parse ! decodebin3 ! autovideosink
 ```
 
+Left to its own devices, the element opens a stream from the first device
+it finds; set `udid` to wait for a specific one. Applications that already
+hold a `DisplayStream` can inject it through the `stream` property instead.
+
 For an embeddable, toolkit-agnostic view, the GStreamer element feeds the
 renderer the UI toolkit provides: `gtk4paintablesink` for a GTK widget,
 or the in-process Quickshell/Qt module. The module (built when Qt 6 and
