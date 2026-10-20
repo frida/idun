@@ -1,0 +1,3 @@
+module Idun.Screen
+plugin idunscreen
+classname IdunScreenPlugin
