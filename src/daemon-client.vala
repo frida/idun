@@ -489,7 +489,8 @@ namespace Idun {
 		public int datagram_receive_messages (InputMessage[] messages, int flags, int64 timeout, Cancellable? cancellable)
 				throws GLib.Error {
 			int received = 0;
-			foreach (unowned InputMessage message in messages) {
+			for (int i = 0; i != messages.length; i++) {
+				InputMessage * message = &messages[i];
 				ssize_t n;
 				try {
 					n = handle.receive (rx_buffer, cancellable);
@@ -503,22 +504,22 @@ namespace Idun {
 				uint16 port = reader.read_uint16 ();
 				unowned uint8[] payload = reader.read_remaining_data ();
 
-				if (message.address != null)
-					*message.address = new InetSocketAddress (remote_address, port);
+				if (message->address != null)
+					*message->address = new InetSocketAddress (remote_address, port);
 
-				message.bytes_received = 0;
-				message.flags = 0;
+				message->bytes_received = 0;
+				message->flags = 0;
 
 				uint8 * data = payload;
 				size_t remaining = payload.length;
-				foreach (unowned InputVector vector in message.vectors) {
+				foreach (unowned InputVector vector in message->vectors) {
 					size_t chunk = size_t.min (remaining, vector.size);
 					if (chunk == 0)
 						break;
 					Memory.copy (vector.buffer, data, chunk);
 					data += chunk;
 					remaining -= chunk;
-					message.bytes_received += chunk;
+					message->bytes_received += chunk;
 				}
 
 				received++;
@@ -529,22 +530,25 @@ namespace Idun {
 		public int datagram_send_messages (OutputMessage[] messages, int flags, int64 timeout, Cancellable? cancellable)
 				throws GLib.Error {
 			int sent = 0;
-			foreach (unowned OutputMessage message in messages) {
-				var address = (InetSocketAddress) message.address;
+			for (int i = 0; i != messages.length; i++) {
+				OutputMessage * message = &messages[i];
+				var address = (InetSocketAddress) message->address;
 				var frame = new BufferBuilder (BIG_ENDIAN)
 					.append_uint16 (address.get_port ());
-				foreach (unowned OutputVector vector in message.vectors) {
+				foreach (unowned OutputVector vector in message->vectors) {
 					unowned uint8[] data = (uint8[]) vector.buffer;
 					frame.append_data (data[:vector.size]);
 				}
 
+				Bytes packet = frame.build ();
 				try {
-					handle.send (frame.build ().get_data (), cancellable);
+					handle.send (packet.get_data (), cancellable);
 				} catch (IOError e) {
 					if (e is IOError.WOULD_BLOCK && sent != 0)
 						break;
 					throw e;
 				}
+				message->bytes_sent = (uint) packet.get_size () - 2;
 
 				sent++;
 			}
@@ -574,7 +578,9 @@ namespace Idun {
 			this.handle = handle;
 			this.condition = condition;
 
-			add_child_source (handle.create_source (condition, cancellable));
+			var handle_source = handle.create_source (condition, cancellable);
+			handle_source.set_callback ((socket, condition) => Source.CONTINUE);
+			add_child_source (handle_source);
 		}
 
 		protected override bool prepare (out int timeout) {
