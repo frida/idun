@@ -83,7 +83,13 @@ namespace Idun.DaemonMain {
 	}
 #endif
 
+	private static bool stopping = false;
+
 	private static void stop_and_quit (DaemonServer server, MainLoop loop) {
+		if (stopping)
+			return;
+		stopping = true;
+
 		server.stop.begin (null, (obj, res) => {
 			try {
 				server.stop.end (res);

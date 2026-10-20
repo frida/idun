@@ -387,10 +387,6 @@ namespace Idun {
 				}
 			}
 
-			try {
-				yield stop (null);
-			} catch (IOError e) {
-			}
 			idle ();
 		}
 
