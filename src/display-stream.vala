@@ -42,6 +42,26 @@ namespace Idun {
 			private set;
 		}
 
+		/**
+		 * The H.264 parameter sets (SPS and PPS NAL units) announced by the device.
+		 *
+		 * The device sends these out-of-band rather than in the RTP stream, so consumers must
+		 * feed them to the decoder themselves. Updated whenever the device announces new ones.
+		 */
+		public Gee.List<Bytes> parameter_sets {
+			get;
+			private set;
+			default = new Gee.ArrayList<Bytes> ();
+		}
+
+		/**
+		 * The AVCDecoderConfigurationRecord announced by the device, if any.
+		 */
+		public Bytes? codec_data {
+			get;
+			private set;
+		}
+
 		private Tunnel tunnel;
 		private DisplayService service;
 		private UdpSocket socket;
@@ -55,6 +75,8 @@ namespace Idun {
 		private const size_t MAX_DATAGRAM_SIZE = 65535;
 		private const uint8 RTCP_PACKET_TYPE_LOWEST = 200;
 		private const uint8 RTCP_PACKET_TYPE_HIGHEST = 207;
+		private const size_t RTP_HEADER_SIZE = 12;
+		private const uint8 NAL_TYPE_PARAMETER_SETS = 18;
 
 		public static async DisplayStream open (Device device, Cancellable? cancellable = null) throws Efni.Error, IOError {
 			var tunnel = yield device.find_tunnel (cancellable);
@@ -140,10 +162,101 @@ namespace Idun {
 			unowned uint8[] packet = rx_buf[:n];
 			if (packet[1] >= RTCP_PACKET_TYPE_LOWEST && packet[1] <= RTCP_PACKET_TYPE_HIGHEST)
 				rtcp (new Bytes (packet));
-			else
+			else if (!try_consume_parameter_sets (packet))
 				rtp (new Bytes (packet));
 
 			return Source.CONTINUE;
+		}
+
+		private bool try_consume_parameter_sets (uint8[] packet) {
+			size_t payload_offset = compute_rtp_payload_offset (packet);
+			if (payload_offset == 0 || payload_offset >= packet.length)
+				return false;
+			if ((packet[payload_offset] & 0x1f) != NAL_TYPE_PARAMETER_SETS)
+				return false;
+
+			Bytes? record = find_avcc_record (packet[payload_offset:]);
+			if (record == null)
+				return true;
+
+			Gee.List<Bytes>? sets = parse_avcc_record (record);
+			if (sets == null)
+				return true;
+
+			parameter_sets = sets;
+			codec_data = record;
+
+			return true;
+		}
+
+		private static size_t compute_rtp_payload_offset (uint8[] packet) {
+			if (packet.length < RTP_HEADER_SIZE)
+				return 0;
+
+			uint8 first = packet[0];
+			if ((first >> 6) != 2)
+				return 0;
+			uint csrc_count = first & 0x0f;
+			bool has_extension = (first & 0x10) != 0;
+
+			size_t offset = RTP_HEADER_SIZE + (csrc_count * 4);
+			if (has_extension) {
+				if (offset + 4 > packet.length)
+					return 0;
+				uint extension_words = ((uint) packet[offset + 2] << 8) | packet[offset + 3];
+				offset += 4 + (extension_words * 4);
+			}
+
+			return offset;
+		}
+
+		private static Bytes? find_avcc_record (uint8[] payload) {
+			for (size_t i = 4; i + 4 <= payload.length; i++) {
+				if (payload[i] != 'a' || payload[i + 1] != 'v' || payload[i + 2] != 'c' || payload[i + 3] != 'C')
+					continue;
+				size_t box_start = i - 4;
+				size_t box_size = ((size_t) payload[box_start] << 24) | ((size_t) payload[box_start + 1] << 16) |
+					((size_t) payload[box_start + 2] << 8) | payload[box_start + 3];
+				if (box_size < 8 || box_start + box_size > payload.length)
+					return null;
+				return new Bytes (payload[box_start + 8:box_start + box_size]);
+			}
+			return null;
+		}
+
+		private static Gee.List<Bytes>? parse_avcc_record (Bytes record) {
+			unowned uint8[] data = record.get_data ();
+			if (data.length < 7 || data[0] != 1)
+				return null;
+
+			var sets = new Gee.ArrayList<Bytes> ();
+			size_t offset = 5;
+
+			uint num_sps = data[offset++] & 0x1f;
+			if (!read_parameter_sets (data, ref offset, num_sps, sets))
+				return null;
+
+			if (offset >= data.length)
+				return null;
+			uint num_pps = data[offset++];
+			if (!read_parameter_sets (data, ref offset, num_pps, sets))
+				return null;
+
+			return sets;
+		}
+
+		private static bool read_parameter_sets (uint8[] data, ref size_t offset, uint count, Gee.List<Bytes> sets) {
+			for (uint i = 0; i != count; i++) {
+				if (offset + 2 > data.length)
+					return false;
+				size_t size = ((size_t) data[offset] << 8) | data[offset + 1];
+				offset += 2;
+				if (offset + size > data.length)
+					return false;
+				sets.add (new Bytes (data[offset:offset + size]));
+				offset += size;
+			}
+			return true;
 		}
 
 		private void on_service_closed (Efni.Error? error) {
