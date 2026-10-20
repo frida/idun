@@ -483,6 +483,7 @@ namespace Idun {
 		}
 	}
 
+	[CCode (gir_namespace = "Idun", gir_version = "1.0")]
 	namespace XNU {
 		public async PcbList query_active_tcp_connections (Cancellable? cancellable) throws Efni.Error, IOError {
 			var sysctl_output = new UnixInputStream (spawn_orphaned ({ "/usr/sbin/sysctl", "-b", "net.inet.tcp.pcblist_n" }), true);
