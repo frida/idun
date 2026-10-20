@@ -1026,10 +1026,16 @@ namespace Idun {
 	}
 
 	public sealed class TunnelKey {
-		internal OpenSSL.Envelope.Key handle;
+		internal unowned OpenSSL.Envelope.Key handle {
+			get {
+				return _handle;
+			}
+		}
+
+		private OpenSSL.Envelope.Key _handle;
 
 		internal TunnelKey (owned OpenSSL.Envelope.Key handle) {
-			this.handle = (owned) handle;
+			_handle = (owned) handle;
 		}
 	}
 }

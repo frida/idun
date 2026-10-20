@@ -1472,11 +1472,10 @@ namespace Idun {
 		private static PairingIdentity? try_load_identity () {
 			try {
 				var plist = new Plist.from_data (query_self_identity_location ().load_bytes ().get_data ());
-				return new PairingIdentity () {
-					identifier = plist.get_string ("identifier"),
-					key = new Key.from_raw_private_key (ED25519, null, plist.get_bytes ("privateKey").get_data ()),
-					irk = plist.get_bytes ("irk"),
-				};
+				return new PairingIdentity (
+					plist.get_string ("identifier"),
+					new Key.from_raw_private_key (ED25519, null, plist.get_bytes ("privateKey").get_data ()),
+					plist.get_bytes ("irk"));
 			} catch (GLib.Error e) {
 				return null;
 			}
@@ -1579,18 +1578,27 @@ namespace Idun {
 
 	public sealed class PairingIdentity {
 		public string identifier;
-		internal Key key;
 		public Bytes irk;
+
+		internal unowned Key key {
+			get {
+				return _key;
+			}
+		}
+
+		private Key _key;
+
+		internal PairingIdentity (owned string identifier, owned Key key, owned Bytes irk) {
+			this.identifier = (owned) identifier;
+			_key = (owned) key;
+			this.irk = (owned) irk;
+		}
 
 		public static PairingIdentity make () {
 			uint8 raw_irk[16];
 			Rng.generate (raw_irk);
 
-			return new PairingIdentity () {
-				identifier = make_host_identifier (),
-				key = make_keypair (ED25519),
-				irk = new Bytes (raw_irk),
-			};
+			return new PairingIdentity (make_host_identifier (), make_keypair (ED25519), new Bytes (raw_irk));
 		}
 	}
 
