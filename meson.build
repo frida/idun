@@ -200,6 +200,13 @@ cdata.set_quoted('IDUN_CONFIG_LIBDIR', get_option('libdir'))
 cdata.set_quoted('IDUN_CONFIG_BINDIR', get_option('bindir'))
 configure_file(output: 'idun-config.h', configuration: cdata)
 
+examples_opt = get_option('examples')
+if examples_opt.auto()
+  build_examples = not meson.is_subproject() and host_os_family != 'windows'
+else
+  build_examples = not examples_opt.disabled()
+endif
+
 tests_opt = get_option('tests')
 if tests_opt.auto()
   build_tests = not meson.is_subproject() and meson.can_run_host_binaries()
@@ -208,6 +215,9 @@ else
 endif
 
 subdir('src')
+if build_examples
+  subdir('examples')
+endif
 if build_daemon
   subdir('daemon')
   if host_os_family == 'linux'

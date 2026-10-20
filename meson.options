@@ -9,3 +9,9 @@ option('daemon',
   value: 'auto',
   description: 'Build idund, the per-user daemon'
 )
+
+option('examples',
+  type: 'feature',
+  value: 'auto',
+  description: 'Build example programs'
+)
