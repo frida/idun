@@ -21,6 +21,7 @@ idun_sources = [
   'network-stack.vala',
   'core-device-info.vala',
   'screen-capture.vala',
+  'pasteboard.vala',
 ]
 
 if host_os != 'macos'
