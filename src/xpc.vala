@@ -360,8 +360,27 @@ namespace Idun {
 			XpcMessage raw_response = yield connection.request (request.build (), cancellable);
 
 			var response = new VariantReader (raw_response.body);
+			if (!response.has_member ("CoreDevice.output"))
+				throw new Efni.Error.NOT_SUPPORTED ("%s", describe_invocation_error (response));
 			response.read_member ("CoreDevice.output");
 			return response;
+		}
+
+		private static string describe_invocation_error (VariantReader response) throws Efni.Error {
+			response.read_member ("CoreDevice.error");
+
+			string domain = response.read_member ("domain").get_string_value ();
+			response.end_member ();
+			int64 code = response.read_member ("code").get_int64_value ();
+			response.end_member ();
+
+			response.read_member ("userInfo");
+			foreach (unowned string key in new string[] { "NSLocalizedDescription", "NSDebugDescription" }) {
+				if (response.has_member (key))
+					return response.read_member (key).get_string_value ();
+			}
+
+			return ("%s error %" + int64.FORMAT_MODIFIER + "d").printf (domain, code);
 		}
 
 		public static void add_standard_request_values (ObjectBuilder builder) {
