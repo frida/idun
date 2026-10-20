@@ -23,6 +23,7 @@ idun_sources = [
   'screen-capture.vala',
   'pasteboard.vala',
   'hid.vala',
+  'display-stream.vala',
 ]
 
 if host_os != 'macos'
