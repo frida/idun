@@ -1232,7 +1232,7 @@ namespace Idun {
 			return this;
 		}
 
-		public unowned XpcObjectBuilder add_double_value (double val) {
+		public unowned ObjectBuilder add_double_value (double val) {
 			begin_object (DOUBLE).append_double (val);
 			return this;
 		}
