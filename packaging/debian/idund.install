@@ -1,0 +1,3 @@
+usr/bin/idund
+usr/lib/systemd/user/idund.service
+usr/share/dbus-1/services/org.freedesktop.Idun1.service

@@ -1,0 +1,54 @@
+pkgbase=idun
+pkgname=('idun' 'gst-plugin-idun' 'idun-qml')
+pkgver=1.0.0
+pkgrel=1
+pkgdesc='Library and daemon for talking to Apple devices over CoreDevice'
+arch=('x86_64' 'aarch64')
+url='https://github.com/frida/idun'
+license=('wxWindows')
+makedepends=('git' 'python' 'libgirepository' 'efni' 'glib2' 'libgee' 'json-glib' 'libnghttp2'
+             'openssl' 'libngtcp2' 'libusb' 'gstreamer' 'gst-plugins-base-libs' 'qt6-declarative')
+source=("$pkgbase::git+$url.git")
+sha256sums=('SKIP')
+
+pkgver() {
+  cd "$pkgbase"
+  python3 tools/detect-version.py | tr - .
+}
+
+prepare() {
+  cd "$pkgbase"
+  git submodule update --init
+}
+
+build() {
+  cd "$pkgbase"
+  ./configure --prefix=/usr --enable-shared --enable-symbols --without-prebuilds=sdk
+  make
+}
+
+package_idun() {
+  depends=('efni' 'glib2' 'libgee' 'json-glib' 'libnghttp2' 'openssl' 'libngtcp2' 'libusb')
+
+  cd "$pkgbase"
+  DESTDIR="$pkgdir" make install
+  mv "$pkgdir/usr/lib/gstreamer-1.0" "$srcdir/gst-plugin-idun"
+  mv "$pkgdir/usr/lib/qt6" "$srcdir/idun-qml"
+}
+
+package_gst-plugin-idun() {
+  pkgdesc='GStreamer element for Apple device screen mirroring'
+  depends=('idun' 'gstreamer' 'gst-plugins-base-libs' 'gst-plugins-good')
+
+  install -d "$pkgdir/usr/lib"
+  mv "$srcdir/gst-plugin-idun" "$pkgdir/usr/lib/gstreamer-1.0"
+}
+
+package_idun-qml() {
+  pkgdesc='QML module for Apple device screen mirroring'
+  depends=('idun' 'gst-plugin-idun' 'qt6-declarative' 'gst-plugins-good')
+  optdepends=('gst-libav: H.264 decoding')
+
+  install -d "$pkgdir/usr/lib"
+  mv "$srcdir/idun-qml" "$pkgdir/usr/lib/qt6"
+}

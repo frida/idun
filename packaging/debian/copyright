@@ -1,0 +1,8 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: idun
+Source: https://github.com/frida/idun
+
+Files: *
+Copyright: Ole André Vadla Ravnås
+License: wxWindows
+ See COPYING for the full text of the wxWindows Library Licence, Version 3.1.

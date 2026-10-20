@@ -1,0 +1,5 @@
+usr/lib/*/libidun-1.0.so
+usr/include/idun-1.0/
+usr/lib/*/pkgconfig/idun-1.0.pc
+usr/share/gir-1.0/Idun-1.0.gir
+usr/share/vala/vapi/idun-1.0.vapi

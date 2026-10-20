@@ -1,0 +1,27 @@
+#!/usr/bin/make -f
+
+include /usr/share/dpkg/architecture.mk
+include /usr/share/dpkg/pkg-info.mk
+
+export FRIDA_VERSION = $(DEB_VERSION_UPSTREAM)
+
+FRIDA_HOST = $(if $(filter amd64,$(DEB_HOST_ARCH)),linux-x86_64,linux-arm64)
+
+%:
+	dh $@
+
+override_dh_auto_clean:
+	rm -rf build
+
+override_dh_auto_configure:
+	mkdir -p deps
+	mv toolchain/$(FRIDA_HOST) deps/toolchain-$(FRIDA_HOST)
+	./configure --prefix=/usr --enable-shared --enable-symbols --without-prebuilds=sdk
+
+override_dh_auto_build:
+	make
+
+override_dh_auto_test:
+
+override_dh_auto_install:
+	DESTDIR=$(CURDIR)/debian/tmp make install

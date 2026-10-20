@@ -1,0 +1,63 @@
+Source: idun
+Section: libs
+Priority: optional
+Maintainer: Ole André Vadla Ravnås <oleavr@frida.re>
+Build-Depends: debhelper-compat (= 13),
+               dh-sequence-gir,
+               git,
+               python3,
+               libefni-dev,
+               gir1.2-efni-1.0,
+               libglib2.0-dev,
+               libgee-0.8-dev,
+               libjson-glib-dev,
+               libnghttp2-dev,
+               libssl-dev,
+               libngtcp2-dev,
+               libngtcp2-crypto-ossl-dev,
+               libusb-1.0-0-dev,
+               libgstreamer1.0-dev,
+               libgstreamer-plugins-base1.0-dev,
+               qt6-declarative-dev,
+               libgirepository1.0-dev
+Standards-Version: 4.7.0
+Homepage: https://github.com/frida/idun
+Rules-Requires-Root: no
+
+Package: libidun-1.0-0
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Library for talking to Apple devices over CoreDevice
+ Shared library.
+
+Package: libidun-dev
+Architecture: any
+Depends: libidun-1.0-0 (= ${binary:Version}), gir1.2-idun-1.0 (= ${binary:Version}), libefni-dev, ${misc:Depends}
+Description: Library for talking to Apple devices over CoreDevice - development files
+ Headers, Vala bindings and GIR data.
+
+Package: idund
+Architecture: any
+Depends: libidun-1.0-0 (= ${binary:Version}), ${shlibs:Depends}, ${misc:Depends}
+Description: Per-user daemon for talking to Apple devices over CoreDevice
+ D-Bus activated daemon that owns the USB and network transports.
+
+Package: gstreamer1.0-idun
+Architecture: any
+Depends: libidun-1.0-0 (= ${binary:Version}), gstreamer1.0-plugins-good, ${shlibs:Depends}, ${misc:Depends}
+Description: GStreamer element for Apple device screen mirroring
+ Provides the idunscreensrc element.
+
+Package: qml6-module-idun-screen
+Architecture: any
+Depends: libidun-1.0-0 (= ${binary:Version}), gstreamer1.0-idun, gstreamer1.0-plugins-good, ${shlibs:Depends}, ${misc:Depends}
+Recommends: gstreamer1.0-libav
+Description: Quickshell module for Apple device screen mirroring
+ Provides the Idun.Screen QML module.
+
+Package: gir1.2-idun-1.0
+Section: introspection
+Architecture: any
+Depends: ${gir:Depends}, ${misc:Depends}
+Description: Library for talking to Apple devices over CoreDevice - introspection data
+ GObject introspection data for libidun.
