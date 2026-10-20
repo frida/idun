@@ -15,3 +15,9 @@ option('examples',
   value: 'auto',
   description: 'Build example programs'
 )
+
+option('gstreamer',
+  type: 'feature',
+  value: 'auto',
+  description: 'Build the GStreamer plugin (idunscreensrc)'
+)

@@ -207,6 +207,15 @@ else
   build_examples = not examples_opt.disabled()
 endif
 
+gst_opt = get_option('gstreamer')
+gst_dep = dependency('gstreamer-1.0', required: gst_opt)
+gst_base_dep = dependency('gstreamer-base-1.0', required: gst_opt)
+gst_app_dep = dependency('gstreamer-app-1.0', required: gst_opt)
+build_gst = gst_dep.found() and gst_base_dep.found() and gst_app_dep.found()
+if build_gst
+  gst_plugindir = get_option('libdir') / 'gstreamer-1.0'
+endif
+
 tests_opt = get_option('tests')
 if tests_opt.auto()
   build_tests = not meson.is_subproject() and meson.can_run_host_binaries()
@@ -215,6 +224,9 @@ else
 endif
 
 subdir('src')
+if build_gst
+  subdir('gst')
+endif
 if build_examples
   subdir('examples')
 endif
