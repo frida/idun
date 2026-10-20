@@ -40,3 +40,116 @@ jobs:
       - name: Test TUN support
         if: ${{ startsWith(matrix.id, 'linux-') }}
         run: sudo build/tests/idun-tests -p /NetworkStack
+
+  package-arch:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install build tools
+        run: |
+          pacman -Syu --noconfirm --needed base-devel git python sudo
+          useradd -m builder
+          echo 'builder ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/builder
+          git config --system --add safe.directory '*'
+      - name: Check out repo
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - name: Check out Efni
+        uses: actions/checkout@v6
+        with:
+          repository: frida/efni
+          path: efni
+          submodules: recursive
+          fetch-depth: 0
+      - name: Package Efni
+        run: |
+          install -d -o builder /tmp/efni
+          sed "s|git+\$url.git|git+file://$GITHUB_WORKSPACE/efni|" ${GITHUB_WORKSPACE}/efni/packaging/arch/PKGBUILD > /tmp/efni/PKGBUILD
+          chown builder /tmp/efni/PKGBUILD
+          cd /tmp/efni && sudo -u builder makepkg -s --noconfirm
+          pacman -U --noconfirm /tmp/efni/efni-r*.pkg.tar.zst
+      - name: Package
+        run: |
+          install -d -o builder /tmp/idun
+          sed "s|git+\$url.git|git+file://$GITHUB_WORKSPACE|" ${GITHUB_WORKSPACE}/packaging/arch/PKGBUILD > /tmp/idun/PKGBUILD
+          chown builder /tmp/idun/PKGBUILD
+          cd /tmp/idun && sudo -u builder makepkg -s --noconfirm
+
+  package-fedora:
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    steps:
+      - name: Install build tools
+        run: |
+          dnf install -y dnf-plugins-core rpm-build rpmdevtools git python3 xz
+          rpmdev-setuptree
+          git config --system --add safe.directory '*'
+      - name: Check out repo
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - name: Check out Efni
+        uses: actions/checkout@v6
+        with:
+          repository: frida/efni
+          path: efni
+          submodules: recursive
+          fetch-depth: 0
+      - name: Package Efni
+        shell: bash
+        run: |
+          ver=$(rpmspec -q --srpm --qf '%{version}' ${GITHUB_WORKSPACE}/efni/packaging/fedora/efni.spec)
+          spectool -g -R ${GITHUB_WORKSPACE}/efni/packaging/fedora/efni.spec
+          (cd ${GITHUB_WORKSPACE}/efni && git ls-files --recurse-submodules -z | tar --null -T - --transform "s,^,efni-$ver/," -cJf ~/rpmbuild/SOURCES/efni-$ver.tar.xz)
+          dnf builddep -y ${GITHUB_WORKSPACE}/efni/packaging/fedora/efni.spec
+          rpmbuild -bb ${GITHUB_WORKSPACE}/efni/packaging/fedora/efni.spec
+          dnf install -y ~/rpmbuild/RPMS/x86_64/efni-*.rpm
+      - name: Package
+        shell: bash
+        run: |
+          ver=$(rpmspec -q --srpm --qf '%{version}' ${GITHUB_WORKSPACE}/packaging/fedora/idun.spec)
+          spectool -g -R ${GITHUB_WORKSPACE}/packaging/fedora/idun.spec
+          (cd ${GITHUB_WORKSPACE} && git ls-files --recurse-submodules -z | tar --null -T - --transform "s,^,idun-$ver/," -cJf ~/rpmbuild/SOURCES/idun-$ver.tar.xz)
+          dnf builddep -y ${GITHUB_WORKSPACE}/packaging/fedora/idun.spec
+          rpmbuild -bb ${GITHUB_WORKSPACE}/packaging/fedora/idun.spec
+
+  package-debian:
+    runs-on: ubuntu-latest
+    container: ubuntu:rolling
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - name: Install build tools
+        run: |
+          apt-get update
+          apt-get install -y devscripts debhelper dpkg-dev git python3 xz-utils ca-certificates
+      - name: Check out repo
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - name: Check out Efni
+        uses: actions/checkout@v6
+        with:
+          repository: frida/efni
+          path: efni
+          submodules: recursive
+          fetch-depth: 0
+      - name: Package Efni
+        run: |
+          cd ${GITHUB_WORKSPACE}/efni
+          cp -r packaging/debian debian
+          python3 releng/deps.py sync toolchain linux-x86_64 toolchain/linux-x86_64
+          apt-get build-dep -y ./
+          dpkg-buildpackage -us -uc -b
+          apt-get install -y $GITHUB_WORKSPACE/*.deb
+      - name: Package
+        run: |
+          cd ${GITHUB_WORKSPACE}
+          cp -r packaging/debian debian
+          python3 releng/deps.py sync toolchain linux-x86_64 toolchain/linux-x86_64
+          apt-get build-dep -y ./
+          dpkg-buildpackage -us -uc -b
