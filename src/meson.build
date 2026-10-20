@@ -96,6 +96,7 @@ idun = library('idun-' + api_version, idun_sources,
   ],
   link_args: platform_link_args,
   dependencies: [glib_dep, gobject_dep, gio_dep, gee_dep, json_glib_dep, efni_dep] + platform_deps,
+  soversion: '0',
   install: true,
   install_dir: [true, header_install_dir, vapidir, girdir],
 )
