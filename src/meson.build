@@ -19,6 +19,7 @@ idun_sources = [
   'kperfdata.vala',
   'cs-signature.vala',
   'network-stack.vala',
+  'core-device-info.vala',
 ]
 
 if host_os != 'macos'
