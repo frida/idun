@@ -95,6 +95,22 @@ idun = library('idun-' + api_version, idun_sources,
   install_dir: [true, header_install_dir, vapidir, girdir],
 )
 
+if build_typelib
+  custom_target('idun-typelib',
+    command: [
+      gir_compiler,
+      '--output', '@OUTPUT@',
+      '--includedir=' + girdir,
+      '--includedir=' + efni_dep.get_variable('girdir'),
+      meson.current_build_dir() / idun_gir_name,
+    ],
+    output: f'Idun-@api_version@.typelib',
+    depends: idun,
+    install: true,
+    install_dir: typelibdir,
+  )
+endif
+
 idun_dep = declare_dependency(
   include_directories: include_directories('.'),
   link_args: platform_link_args,
