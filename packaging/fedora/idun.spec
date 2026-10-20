@@ -7,7 +7,7 @@
 %endif
 
 Name:           idun
-Version:        0.0.0
+Version:        1.0.0
 Release:        1%{?dist}
 Summary:        Library and daemon for talking to Apple devices over CoreDevice
 License:        wxWindows
@@ -104,5 +104,5 @@ DESTDIR=%{buildroot} make install
 %{_datadir}/vala/vapi/idun-1.0.vapi
 
 %changelog
-* Tue Oct 20 2026 Ole André Vadla Ravnås <oleavr@frida.re> - 0.0.0-1
+* Tue Oct 20 2026 Ole André Vadla Ravnås <oleavr@frida.re> - 1.0.0-1
 - Initial package
