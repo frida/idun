@@ -33,6 +33,7 @@ namespace Idun.Test {
 		}
 		Environment.set_variable ("XDG_RUNTIME_DIR", runtime_dir, true);
 		Environment.set_variable ("XDG_CACHE_HOME", runtime_dir, true);
+		Environment.set_variable ("XDG_CONFIG_HOME", runtime_dir, true);
 		Environment.unset_variable ("DBUS_SESSION_BUS_ADDRESS");
 		return runtime_dir;
 	}
