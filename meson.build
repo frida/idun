@@ -124,8 +124,8 @@ if host_os_family == 'windows'
 elif host_os_family == 'darwin'
   platform_vala_args += [
     '--pkg=darwin-xnu',
-    '--pkg=darwin-xpc',
-    '--pkg=darwin-gcd',
+    '--pkg=efni-darwin-xpc',
+    '--pkg=efni-darwin-gcd',
   ]
   platform_link_args += ['-Wl,-framework,Foundation', '-Wl,-framework,CoreFoundation']
   if host_os == 'macos'
