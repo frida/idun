@@ -110,8 +110,11 @@ if host_os != 'macos'
   else
     lwip_options += 'lwip_debug=enabled'
   endif
-  platform_deps += dependency('lwip', default_options: lwip_options)
-  platform_reqs += 'lwip'
+  lwip_dep = dependency('lwip', default_options: lwip_options)
+  if lwip_dep.type_name() == 'internal'
+    lwip_dep = lwip_dep.as_link_whole()
+  endif
+  platform_deps += lwip_dep
   platform_vala_args += '--pkg=lwip'
 endif
 
