@@ -39,6 +39,7 @@ json_glib_dep = dependency('json-glib-1.0', version: '>=1.8', default_options: [
   'nls=disabled',
 ])
 efni_dep = dependency('efni-1.0', default_options: ['default_library=static'])
+add_project_arguments('--vapidir=' + efni_dep.get_variable('vapidir'), language: 'vala')
 
 platform_deps = []
 platform_reqs = []
