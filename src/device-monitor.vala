@@ -5,6 +5,10 @@ namespace Idun {
 		public signal void device_attached (Device device);
 		public signal void device_detached (Device device);
 
+		private signal void state_changed ();
+
+		public delegate bool Predicate (Device device);
+
 #if HAVE_DAEMON
 		private bool use_daemon = true;
 		private DaemonLocator? locate_daemon;
@@ -45,6 +49,27 @@ namespace Idun {
 		public async void start (Cancellable? cancellable = null) throws Efni.Error, IOError {
 			state = STARTING;
 
+			Efni.Error? api_error = null;
+			IOError? io_error = null;
+			try {
+				yield perform_start (cancellable);
+			} catch (Efni.Error e) {
+				api_error = e;
+			} catch (IOError e) {
+				io_error = e;
+			}
+
+			if (state == STARTING)
+				state = CREATED;
+			state_changed ();
+
+			if (api_error != null)
+				throw api_error;
+			if (io_error != null)
+				throw io_error;
+		}
+
+		private async void perform_start (Cancellable? cancellable) throws Efni.Error, IOError {
 #if !MACOS
 			yield add_portable_backends (cancellable);
 			if (state == STOPPED)
@@ -56,7 +81,7 @@ namespace Idun {
 			NotifyCompleteFunc on_complete = () => {
 				remaining--;
 				if (remaining == 0)
-					start.callback ();
+					perform_start.callback ();
 			};
 
 			foreach (var backend in backends)
@@ -83,6 +108,172 @@ namespace Idun {
 
 			foreach (var device in devices.values)
 				device_attached (device);
+		}
+
+		/**
+		 * Lists the devices currently attached, starting the monitor first if needed.
+		 */
+		public async Gee.List<Device> enumerate_devices (Cancellable? cancellable = null) throws Efni.Error, IOError {
+			yield ensure_started (cancellable);
+
+			return new Gee.ArrayList<Device>.wrap (devices.values.to_array ());
+		}
+
+		/**
+		 * Gets the device with the given UDID.
+		 *
+		 * @param udid the device identifier
+		 * @param timeout milliseconds to wait for a match, 0 to not wait, or -1 to wait indefinitely
+		 */
+		public async Device get_device_by_udid (string udid, int timeout = 0, Cancellable? cancellable = null)
+				throws Efni.Error, IOError {
+			return check_device (yield find_device_by_udid (udid, timeout, cancellable));
+		}
+
+		/**
+		 * Gets the first device accepted by @predicate.
+		 *
+		 * @param predicate function deciding whether a device matches
+		 * @param timeout milliseconds to wait for a match, 0 to not wait, or -1 to wait indefinitely
+		 */
+		public async Device get_device (Predicate predicate, int timeout = 0, Cancellable? cancellable = null)
+				throws Efni.Error, IOError {
+			return check_device (yield find_device (predicate, timeout, cancellable));
+		}
+
+		private static Device check_device (Device? device) throws Efni.Error {
+			if (device == null)
+				throw new Efni.Error.INVALID_ARGUMENT ("Device not found");
+			return device;
+		}
+
+		/**
+		 * Finds the device with the given UDID.
+		 *
+		 * @param udid the device identifier
+		 * @param timeout milliseconds to wait for a match, 0 to not wait, or -1 to wait indefinitely
+		 * @return the device, or null if not found
+		 */
+		public async Device? find_device_by_udid (string udid, int timeout = 0, Cancellable? cancellable = null)
+				throws Efni.Error, IOError {
+			return yield find_device (device => device.udid == udid, timeout, cancellable);
+		}
+
+		/**
+		 * Finds the first device accepted by @predicate.
+		 *
+		 * @param predicate function deciding whether a device matches
+		 * @param timeout milliseconds to wait for a match, 0 to not wait, or -1 to wait indefinitely
+		 * @return the device, or null if not found
+		 */
+		public async Device? find_device (Predicate predicate, int timeout = 0, Cancellable? cancellable = null)
+				throws Efni.Error, IOError {
+			yield ensure_started (cancellable);
+
+			foreach (var device in devices.values) {
+				if (predicate (device))
+					return device;
+			}
+
+			if (timeout == 0)
+				return null;
+
+			bool waiting = true;
+			Device? found = null;
+
+			ulong attached_handler = device_attached.connect (device => {
+				if (!waiting || !predicate (device))
+					return;
+				found = device;
+				waiting = false;
+				find_device.callback ();
+			});
+
+			ulong state_handler = state_changed.connect (() => {
+				if (!waiting || state == STARTED)
+					return;
+				waiting = false;
+				find_device.callback ();
+			});
+
+			Source? timeout_source = null;
+			if (timeout > 0) {
+				timeout_source = new TimeoutSource (timeout);
+				timeout_source.set_callback (() => {
+					if (!waiting)
+						return Source.REMOVE;
+					waiting = false;
+					find_device.callback ();
+					return Source.REMOVE;
+				});
+				timeout_source.attach (MainContext.get_thread_default ());
+			}
+
+			var cancel_source = new CancellableSource (cancellable);
+			cancel_source.set_callback (() => {
+				if (!waiting)
+					return Source.REMOVE;
+				waiting = false;
+				find_device.callback ();
+				return Source.REMOVE;
+			});
+			cancel_source.attach (MainContext.get_thread_default ());
+
+			yield;
+
+			cancel_source.destroy ();
+			if (timeout_source != null)
+				timeout_source.destroy ();
+			disconnect (state_handler);
+			disconnect (attached_handler);
+
+			if (found == null && cancellable != null)
+				cancellable.set_error_if_cancelled ();
+
+			return found;
+		}
+
+		private async void ensure_started (Cancellable? cancellable) throws Efni.Error, IOError {
+			switch (state) {
+				case CREATED:
+					yield start (cancellable);
+					break;
+				case STARTING: {
+					bool waiting = true;
+
+					ulong handler = state_changed.connect (() => {
+						if (!waiting)
+							return;
+						waiting = false;
+						ensure_started.callback ();
+					});
+
+					var cancel_source = new CancellableSource (cancellable);
+					cancel_source.set_callback (() => {
+						if (!waiting)
+							return Source.REMOVE;
+						waiting = false;
+						ensure_started.callback ();
+						return Source.REMOVE;
+					});
+					cancel_source.attach (MainContext.get_thread_default ());
+
+					yield;
+
+					cancel_source.destroy ();
+					disconnect (handler);
+
+					if (cancellable != null)
+						cancellable.set_error_if_cancelled ();
+					if (state != STARTED)
+						throw new Efni.Error.INVALID_OPERATION ("Device monitor failed to start");
+					break;
+				}
+				case STARTED:
+					break;
+				case STOPPED:
+					throw new Efni.Error.INVALID_OPERATION ("Device monitor has been stopped");
+			}
 		}
 
 #if !MACOS
@@ -132,6 +323,8 @@ namespace Idun {
 			foreach (var device in devices.values)
 				device.close ();
 			devices.clear ();
+
+			state_changed ();
 		}
 
 		private async void do_start (Backend backend, Cancellable? cancellable, NotifyCompleteFunc on_complete) {
