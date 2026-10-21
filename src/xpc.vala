@@ -80,11 +80,47 @@ namespace Idun {
 				return null;
 			}
 
+			return parse_service (identifier, reader);
+		}
+
+		/**
+		 * Lists the services the device advertised in its handshake, each with the features it supports.
+		 */
+		public Gee.List<ServiceInfo> query_services () throws Efni.Error {
+			var services = new Gee.ArrayList<ServiceInfo> ();
+
+			var reader = new VariantReader (handshake_body);
+			reader.read_member ("Services");
+			foreach (string identifier in reader.list_members ()) {
+				reader.read_member (identifier);
+				services.add (parse_service (identifier, reader));
+				reader.end_member ();
+			}
+
+			return services;
+		}
+
+		private static ServiceInfo parse_service (string identifier, VariantReader reader) throws Efni.Error {
 			var port = (uint16) uint.parse (reader.read_member ("Port").get_string_value ());
+			reader.end_member ();
+
+			var features = new Gee.ArrayList<string> ();
+			reader.read_member ("Properties");
+			if (reader.has_member ("Features")) {
+				reader.read_member ("Features");
+				uint n = reader.count_elements ();
+				for (uint i = 0; i != n; i++) {
+					features.add (reader.read_element (i).get_string_value ());
+					reader.end_element ();
+				}
+				reader.end_member ();
+			}
+			reader.end_member ();
 
 			return new ServiceInfo () {
 				name = identifier,
 				port = port,
+				features = features,
 			};
 		}
 
@@ -138,6 +174,7 @@ namespace Idun {
 	public class ServiceInfo {
 		public string name;
 		public uint16 port;
+		public Gee.List<string> features;
 	}
 
 	public sealed class AppService : TrustedService {
