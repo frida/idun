@@ -22,6 +22,7 @@ idun_sources = [
   'core-device-info.vala',
   'screen-capture.vala',
   'pasteboard.vala',
+  'notification-proxy.vala',
   'hid.vala',
   'display-stream.vala',
 ]
