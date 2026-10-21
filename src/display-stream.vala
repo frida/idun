@@ -2,9 +2,10 @@ using Efni;
 
 namespace Idun {
 	public sealed class DisplayStream : Object {
+		public signal void started ();
+		public signal void closed (Efni.Error? error);
 		public signal void rtp (Bytes data);
 		public signal void rtcp (Bytes data);
-		public signal void closed (Efni.Error? error);
 
 		public uint width {
 			get;
@@ -90,15 +91,7 @@ namespace Idun {
 
 			var service = yield DisplayService.open (device, cancellable);
 
-			var stream = new DisplayStream (tunnel, service, display);
-			try {
-				yield stream.start (cancellable);
-			} catch (GLib.Error e) {
-				service.close ();
-				throw_api_error (e);
-			}
-
-			return stream;
+			return new DisplayStream (tunnel, service, display);
 		}
 
 		private DisplayStream (Tunnel tunnel, DisplayService service, DisplayInfo display) {
@@ -109,21 +102,26 @@ namespace Idun {
 			service.closed.connect (on_service_closed);
 		}
 
-		construct {
+		public async void start (Cancellable? cancellable = null) throws Efni.Error, IOError {
 			main_context = MainContext.ref_thread_default ();
-		}
 
-		private async void start (Cancellable? cancellable) throws Efni.Error, IOError {
 			socket = tunnel.create_udp_socket ();
 			InetSocketAddress local_address = socket.get_local_address ();
 			InetSocketAddress remote_address = tunnel.make_remote_address (0);
 
 			uint32 our_ssrc = Random.next_int ();
-			config = yield service.start_media_stream (local_address, remote_address, make_negotiation_offer (our_ssrc), cancellable);
+			try {
+				config = yield service.start_media_stream (local_address, remote_address, make_negotiation_offer (our_ssrc),
+					cancellable);
+			} catch (GLib.Error e) {
+				throw_api_error (e);
+			}
 			framerate = config.framerate;
 			payload_type = config.payload_type;
 			local_ssrc = config.remote_ssrc;
 			remote_ssrc = config.local_ssrc;
+
+			started ();
 
 			rx_source = socket.datagram_based.create_source (IOCondition.IN, io_cancellable);
 			rx_source.set_callback (on_socket_readable);
@@ -136,17 +134,21 @@ namespace Idun {
 			is_closed = true;
 
 			io_cancellable.cancel ();
-			rx_source.destroy ();
 
-			try {
-				yield service.stop_media_stream (config.remote_ssrc, cancellable);
-			} catch (Efni.Error e) {
+			if (config != null) {
+				rx_source.destroy ();
+				try {
+					yield service.stop_media_stream (config.remote_ssrc, cancellable);
+				} catch (Efni.Error e) {
+				}
 			}
 
 			service.close ();
 		}
 
 		public void send_rtcp (Bytes data) throws Efni.Error, IOError {
+			if (config == null)
+				throw new Efni.Error.INVALID_OPERATION ("Stream not started");
 			Udp.send_to (data.get_data (), tunnel.make_remote_address (config.source_port), socket.datagram_based, io_cancellable);
 		}
 
