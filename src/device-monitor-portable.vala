@@ -175,7 +175,7 @@ namespace Idun {
 
 			usb_worker = new Thread<void> ("idun-usb", perform_usb_work);
 
-			yield network_browser.start (cancellable);
+			network_browser.start.begin (io_cancellable);
 
 			try {
 				yield usb_started.future.wait_async (cancellable);
