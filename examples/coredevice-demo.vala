@@ -136,9 +136,6 @@ namespace Idun.Examples {
 
 		private async void stream_display (Device device) throws GLib.Error {
 			var stream = yield DisplayStream.open (device, cancellable);
-			print ("Streaming %ux%u at %u fps, payload type %u, clock rate %u, local SSRC %u, remote SSRC %u\n",
-				stream.width, stream.height, stream.framerate, stream.payload_type, stream.clock_rate,
-				stream.local_ssrc, stream.remote_ssrc);
 
 			uint packets = 0;
 			uint64 bytes = 0;
@@ -150,6 +147,11 @@ namespace Idun.Examples {
 				packets++;
 				bytes += data.get_size ();
 			});
+
+			yield stream.start (cancellable);
+			print ("Streaming %ux%u at %u fps, payload type %u, clock rate %u, local SSRC %u, remote SSRC %u\n",
+				stream.width, stream.height, stream.framerate, stream.payload_type, stream.clock_rate,
+				stream.local_ssrc, stream.remote_ssrc);
 
 			yield wait_for_cancellation ();
 
