@@ -26,6 +26,7 @@ namespace Idun {
 		private ulong rtp_handler;
 		private ulong rtcp_handler;
 		private ulong codec_data_handler;
+		private ulong started_handler;
 
 		private Thread<void>? worker;
 		private MainContext? worker_context;
@@ -59,6 +60,7 @@ namespace Idun {
 			rtcp_src.caps = new Gst.Caps.empty_simple ("application/x-rtcp");
 			rtcp_src.set ("is-live", true);
 			rtcp_sink.set ("emit-signals", true, "sync", false, "async", false);
+			depayloader.set ("request-keyframe", true, "wait-for-keyframe", true);
 			session.set ("rtp-profile", RTP_PROFILE_AVPF);
 
 			add_many (rtp_src, rtcp_src, rtcp_sink, session, depayloader, output);
@@ -76,21 +78,13 @@ namespace Idun {
 		}
 
 		public override Gst.StateChangeReturn change_state (Gst.StateChange transition) {
-			if (transition == NULL_TO_READY) {
-				if (_stream != null)
-					attach_stream ();
-				else
-					start_worker ();
-			}
+			if (transition == NULL_TO_READY)
+				start_worker ();
 
 			Gst.StateChangeReturn result = base.change_state (transition);
 
-			if (transition == READY_TO_NULL) {
-				if (worker != null)
-					stop_worker ();
-				else
-					detach_stream ();
-			}
+			if (transition == READY_TO_NULL)
+				stop_worker ();
 
 			return result;
 		}
@@ -115,20 +109,23 @@ namespace Idun {
 			opening = true;
 
 			try {
-				monitor = new DeviceMonitor ();
+				if (_stream == null) {
+					monitor = new DeviceMonitor ();
 #if HAVE_DAEMON
-				string? idund = Environment.get_variable ("IDUND");
-				if (idund != null)
-					monitor.set_daemon_locator (() => idund);
+					string? idund = Environment.get_variable ("IDUND");
+					if (idund != null)
+						monitor.set_daemon_locator (() => idund);
 #endif
 
-				string? wanted = udid;
-				Device device = (wanted != null)
-					? yield monitor.get_device_by_udid (wanted, -1, io_cancellable)
-					: yield monitor.get_device (d => true, -1, io_cancellable);
-				_stream = yield DisplayStream.open (device, io_cancellable);
+					string? wanted = udid;
+					Device device = (wanted != null)
+						? yield monitor.get_device_by_udid (wanted, -1, io_cancellable)
+						: yield monitor.get_device (d => true, -1, io_cancellable);
+					_stream = yield DisplayStream.open (device, io_cancellable);
+				}
 
 				attach_stream ();
+				yield _stream.start (io_cancellable);
 			} catch (GLib.Error e) {
 				if (!(e is IOError.CANCELLED)) {
 					message_full (ERROR, Gst.ResourceError.quark (), Gst.ResourceError.OPEN_READ,
@@ -146,10 +143,14 @@ namespace Idun {
 		}
 
 		private void attach_stream () {
-			rtp_src.caps = describe_payload ();
 			rtp_handler = _stream.rtp.connect (on_rtp);
 			rtcp_handler = _stream.rtcp.connect (on_rtcp);
 			codec_data_handler = _stream.notify["codec-data"].connect (on_codec_data_changed);
+			started_handler = _stream.started.connect (on_started);
+		}
+
+		private void on_started () {
+			rtp_src.caps = describe_payload ();
 		}
 
 		private void stop_worker () {
@@ -165,9 +166,7 @@ namespace Idun {
 			worker = null;
 			worker_context = null;
 			worker_loop = null;
-			monitor = null;
 			io_cancellable = null;
-			_stream = null;
 		}
 
 		private async void teardown () {
@@ -178,17 +177,22 @@ namespace Idun {
 				yield;
 			}
 
-			if (_stream != null) {
+			if (rtp_handler != 0)
 				detach_stream ();
+
+			if (monitor != null) {
+				if (_stream != null) {
+					try {
+						yield _stream.close ();
+					} catch (IOError e) {
+					}
+					_stream = null;
+				}
 				try {
-					yield _stream.close ();
+					yield monitor.stop ();
 				} catch (IOError e) {
 				}
-			}
-
-			try {
-				yield monitor.stop ();
-			} catch (IOError e) {
+				monitor = null;
 			}
 
 			worker_loop.quit ();
@@ -198,6 +202,8 @@ namespace Idun {
 			_stream.disconnect (rtp_handler);
 			_stream.disconnect (rtcp_handler);
 			_stream.disconnect (codec_data_handler);
+			_stream.disconnect (started_handler);
+			rtp_handler = 0;
 		}
 
 		private void on_rtp (Bytes data) {
