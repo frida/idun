@@ -106,7 +106,7 @@ namespace Idun {
 
 			state = STARTED;
 
-			foreach (var device in devices.values)
+			foreach (var device in devices.values.to_array ())
 				device_attached (device);
 		}
 
