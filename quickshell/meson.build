@@ -7,7 +7,7 @@ moc_sources = qt.preprocess(
 
 shared_module('idunscreen', ['idunscreen.cpp', 'plugin.cpp', moc_sources],
   cpp_args: ['-DQT_NO_KEYWORDS'],
-  dependencies: [idun_dep, qt_qml_dep, gst_dep, gst_gl_dep],
+  dependencies: [idun_dep, qt_qml_dep, gst_dep, gst_app_dep, gst_video_dep],
   install: true,
   install_dir: qml_install_dir,
   name_prefix: 'lib',

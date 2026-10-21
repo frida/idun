@@ -220,9 +220,9 @@ endif
 
 quickshell_opt = get_option('quickshell')
 qt = import('qt6', required: quickshell_opt)
-qt_qml_dep = dependency('qt6', modules: ['Core', 'Gui', 'Qml', 'Quick'], required: quickshell_opt)
-gst_gl_dep = dependency('gstreamer-gl-1.0', required: quickshell_opt)
-build_quickshell = build_gst and qt.found() and qt_qml_dep.found() and gst_gl_dep.found()
+qt_qml_dep = dependency('qt6', modules: ['Core', 'Gui', 'Qml', 'Quick', 'Multimedia'], required: quickshell_opt)
+gst_video_dep = dependency('gstreamer-video-1.0', required: quickshell_opt)
+build_quickshell = build_gst and qt.found() and qt_qml_dep.found() and gst_video_dep.found()
 if build_quickshell
   add_languages('cpp', native: false, required: true)
 endif
