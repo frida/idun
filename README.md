@@ -45,9 +45,13 @@ Beyond the device and tunnel plumbing, Idun exposes the CoreDevice
 services a desktop integration needs: `PasteboardService` (read, write,
 and change notifications for the device clipboard), `ScreenCaptureService`
 (pull a PNG screenshot), `CoreDeviceInfoService` (display geometry),
-`HidClient` (inject touches and the Home gesture), and `DisplayStream`
-(a live H.264 screen feed). The `coredevice-demo` example under
-`examples/` drives all of them.
+`HidClient` (inject touches and the Home gesture), `DisplayStream`
+(a live H.264 screen feed), `AppService` (list, launch, and hand a URL to
+an app, which is how URL schemes such as `facetime://` are driven from the
+host), and `NotificationProxyClient` (observe and post Darwin notifications).
+The `coredevice-demo` example under `examples/` drives all of them, and its
+`services` command lists every RemoteXPC service and CoreDevice feature a
+device advertises.
 
 ## Screen mirroring
 
