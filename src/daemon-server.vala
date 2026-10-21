@@ -314,6 +314,8 @@ namespace Idun {
 
 			Socket ours, theirs;
 			make_socket_pair (DATAGRAM, out ours, out theirs);
+			UnixSocket.tune_buffer_sizes (ours.fd);
+			UnixSocket.tune_buffer_sizes (theirs.fd);
 
 			var relay = new UdpRelay (ours, socket, tunnel, io_cancellable);
 			relay.closed.connect (on_udp_relay_closed);
@@ -465,6 +467,8 @@ namespace Idun {
 			private Cancellable cancellable;
 			private Source client_source;
 			private Source device_source;
+			private Source? client_writable_source;
+			private Gee.Queue<Bytes> pending = new Gee.ArrayQueue<Bytes> ();
 			private uint8[] buffer = new uint8[65536];
 
 			public UdpRelay (Socket client, UdpSocket device, Tunnel tunnel, Cancellable cancellable) {
@@ -510,24 +514,91 @@ namespace Idun {
 
 			private bool on_device_readable (DatagramBased datagram_based, IOCondition condition) {
 				try {
-					InetSocketAddress sender;
-					size_t n = Udp.recv (buffer, datagram_based, cancellable, out sender);
-					var frame = new BufferBuilder (BIG_ENDIAN)
-						.append_uint16 (sender.get_port ())
-						.append_data (buffer[:n])
-						.build ();
-					Udp.send (frame.get_data (), client, cancellable);
+					while (true) {
+						InetSocketAddress? sender;
+						size_t n = receive_from_device (out sender);
+						var frame = new BufferBuilder (BIG_ENDIAN)
+							.append_uint16 (sender.get_port ())
+							.append_data (buffer[:n])
+							.build ();
+						forward_to_client (frame);
+					}
+				} catch (IOError e) {
+					if (e is IOError.WOULD_BLOCK)
+						return Source.CONTINUE;
+				} catch (GLib.Error e) {
+				}
+
+				close ();
+				return Source.REMOVE;
+			}
+
+			private size_t receive_from_device (out InetSocketAddress? sender) throws GLib.Error {
+				var vector = InputVector ();
+				vector.buffer = buffer;
+				vector.size = buffer.length;
+				InputVector[] vectors = { vector };
+
+				var message = InputMessage ();
+				sender = null;
+				message.address = &sender;
+				message.vectors = vectors;
+				message.num_vectors = vectors.length;
+				InputMessage[] messages = { message };
+
+				device.datagram_based.receive_messages (messages, 0, 0, cancellable);
+
+				return messages[0].bytes_received;
+			}
+
+			private void forward_to_client (Bytes frame) throws GLib.Error {
+				if (pending.is_empty && send_to_client (frame))
+					return;
+
+				pending.offer (frame);
+
+				if (client_writable_source == null) {
+					var source = client.create_source (IOCondition.OUT, cancellable);
+					source.set_callback (on_client_writable);
+					source.attach (MainContext.get_thread_default ());
+					client_writable_source = source;
+				}
+			}
+
+			private bool on_client_writable (Socket socket, IOCondition condition) {
+				try {
+					while (!pending.is_empty) {
+						if (!send_to_client (pending.peek ()))
+							return Source.CONTINUE;
+						pending.poll ();
+					}
 				} catch (GLib.Error e) {
 					close ();
 					return Source.REMOVE;
 				}
 
-				return Source.CONTINUE;
+				client_writable_source = null;
+				return Source.REMOVE;
+			}
+
+			private bool send_to_client (Bytes frame) throws GLib.Error {
+				try {
+					client.send (frame.get_data (), cancellable);
+					return true;
+				} catch (IOError e) {
+					if (e is IOError.WOULD_BLOCK)
+						return false;
+					throw e;
+				}
 			}
 
 			private void close () {
 				client_source.destroy ();
 				device_source.destroy ();
+				if (client_writable_source != null) {
+					client_writable_source.destroy ();
+					client_writable_source = null;
+				}
 				try {
 					client.close ();
 				} catch (GLib.Error e) {
