@@ -222,6 +222,8 @@ namespace OpenSSL {
 		public class Key {
 			[CCode (cheader_filename = "openssl/x509.h", cname = "d2i_PUBKEY_bio")]
 			public Key.from_der (BasicIO source, Key ** a = null);
+			[CCode (cheader_filename = "openssl/pem.h", cname = "PEM_read_bio_PrivateKey")]
+			public Key.from_private_key_pem (BasicIO source, Key ** a = null, void * cb = null, void * u = null);
 			[CCode (cname = "EVP_PKEY_new_raw_public_key")]
 			public Key.from_raw_public_key (KeyType type, Engine? engine, uint8[] pub);
 			[CCode (cname = "EVP_PKEY_new_raw_private_key")]

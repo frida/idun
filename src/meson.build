@@ -50,6 +50,7 @@ if host_os != 'macos'
     'transport' / 'ncm.vala',
 
     'identity' / 'apns-activation.vala',
+    'identity' / 'apns-courier.vala',
     'identity' / 'identity-oracle.vala',
     'identity' / 'apple-root-ca.vala',
   ]
