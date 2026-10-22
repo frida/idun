@@ -1,83 +1,94 @@
 idun_sources = [
-  'channel-provider.vala',
   'device-monitor.vala',
-  'xpc.vala',
-  'dtx.vala',
   'lockdown.vala',
   'installation-proxy.vala',
   'springboard-services.vala',
-  'lldb.vala',
-  'debugger-mappings.vala',
-  'usbmux.vala',
-  'dns.vala',
-  'keyed-archive.vala',
-  'plist.vala',
-  'plist-service.vala',
-  'opack.vala',
-  'kcdata.vala',
-  'kdebug.vala',
-  'kperfdata.vala',
-  'cs-signature.vala',
-  'network-stack.vala',
-  'core-device-info.vala',
-  'screen-capture.vala',
-  'pasteboard.vala',
   'notification-proxy.vala',
-  'hid.vala',
+  'pasteboard.vala',
+  'screen-capture.vala',
   'display-stream.vala',
+  'hid.vala',
+  'core-device-info.vala',
+  'instruments-device-info.vala',
+  'instruments-application-listing.vala',
+  'instruments-process-control.vala',
+  'instruments-core-profile.vala',
+  'lldb.vala',
+  'discovery-service.vala',
+  'app-service.vala',
+  'trusted-service.vala',
+  'plist-service.vala',
+  'plist.vala',
+
+  'transport' / 'channel-provider.vala',
+  'transport' / 'xpc-connection.vala',
+  'transport' / 'dtx-connection.vala',
+  'transport' / 'network-stack.vala',
+  'transport' / 'usbmux.vala',
+  'transport' / 'dns.vala',
+
+  'codec' / 'xpc.vala',
+  'codec' / 'dtx.vala',
+  'codec' / 'keyed-archive.vala',
+  'codec' / 'opack.vala',
+  'codec' / 'cs-signature.vala',
+  'codec' / 'kcdata.vala',
+  'codec' / 'kdebug.vala',
+  'codec' / 'kperfdata.vala',
+  'codec' / 'debugger-mappings.vala',
 ]
 
 if host_os != 'macos'
   idun_sources += [
-    'device-monitor-portable.vala',
-    'pairing.vala',
-    'tunnel.vala',
-    'tls-psk.vala',
-    'virtual-network-stack.vala',
-    'lwip-network-stack.vala',
-    'usb.vala',
-    'ncm.vala',
+    'transport' / 'device-monitor-portable.vala',
+    'transport' / 'pairing.vala',
+    'transport' / 'tunnel.vala',
+    'transport' / 'tls-psk.vala',
+    'transport' / 'virtual-network-stack.vala',
+    'transport' / 'lwip-network-stack.vala',
+    'transport' / 'usb.vala',
+    'transport' / 'ncm.vala',
   ]
 endif
 
 if host_os == 'linux'
-  idun_sources += 'tun-network-stack.vala'
+  idun_sources += 'transport' / 'tun-network-stack.vala'
 endif
 
 if build_daemon
   idun_sources += [
-    'daemon-protocol.vala',
-    'daemon-client.vala',
-    'daemon-server.vala',
+    'daemon' / 'daemon-protocol.vala',
+    'daemon' / 'daemon-client.vala',
+    'daemon' / 'daemon-server.vala',
   ]
   if host_os_family == 'windows'
-    idun_sources += 'daemon-glue-windows.c'
+    idun_sources += 'daemon' / 'daemon-glue-windows.c'
   else
-    idun_sources += 'daemon-glue-linux.c'
+    idun_sources += 'daemon' / 'daemon-glue-linux.c'
   endif
 endif
 
 if host_os_family == 'windows'
   idun_sources += [
-    'device-monitor-windows.vala',
-    'device-monitor-windows.c',
-    'icon-helpers-windows.c',
+    'transport' / 'device-monitor-windows.vala',
+    'transport' / 'device-monitor-windows.c',
+    'transport' / 'icon-helpers-windows.c',
   ]
 elif host_os == 'macos'
   idun_sources += [
-    'device-monitor-macos.vala',
-    'device-monitor-darwin.m',
-    'icon-helpers-darwin.m',
+    'transport' / 'device-monitor-macos.vala',
+    'transport' / 'device-monitor-darwin.m',
+    'transport' / 'icon-helpers-darwin.m',
   ]
 elif host_os_family == 'darwin'
-  idun_sources += 'device-monitor-darwin.m'
+  idun_sources += 'transport' / 'device-monitor-darwin.m'
 elif host_os == 'linux'
   idun_sources += [
-    'device-monitor-linux.vala',
-    'device-monitor-unix.c',
+    'transport' / 'device-monitor-linux.vala',
+    'transport' / 'device-monitor-unix.c',
   ]
 else
-  idun_sources += 'device-monitor-unix.c'
+  idun_sources += 'transport' / 'device-monitor-unix.c'
 endif
 
 idun_gir_name = f'Idun-@api_version@.gir'
