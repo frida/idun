@@ -73,6 +73,24 @@ if host_os != 'macos'
   platform_reqs += 'openssl'
   platform_vala_args += '--pkg=openssl'
 
+  platform_deps += dependency('libsoup-3.0', default_options: [
+    'default_library=static',
+    'sqlite:default_library=static',
+    'gssapi=disabled',
+    'ntlm=disabled',
+    'brotli=disabled',
+    'zstd=disabled',
+    'tls_check=false',
+    'introspection=disabled',
+    'vapi=disabled',
+    'docs=disabled',
+    'examples=disabled',
+    'tests=false',
+    'sysprof=disabled',
+  ])
+  platform_reqs += 'libsoup-3.0'
+  platform_vala_args += '--pkg=libsoup-3.0'
+
   platform_deps += dependency('libngtcp2', default_options: ['default_library=static'])
   platform_reqs += 'libngtcp2'
   platform_vala_args += '--pkg=libngtcp2'

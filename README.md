@@ -113,7 +113,7 @@ built from its wrap and linked statically.
 Prerequisites on Omarchy / Arch Linux:
 
 ```console
-$ sudo pacman -S --needed efni glib2 libgee json-glib libnghttp2 \
+$ sudo pacman -S --needed efni glib2 libgee json-glib libsoup3 libnghttp2 \
       openssl libngtcp2 libusb gstreamer gst-plugins-base-libs \
       qt6-declarative libgirepository
 ```
@@ -122,7 +122,7 @@ Prerequisites on Fedora:
 
 ```console
 $ sudo dnf install efni-devel glib2-devel libgee-devel json-glib-devel \
-      libnghttp2-devel openssl-devel ngtcp2-devel \
+      libsoup3-devel libnghttp2-devel openssl-devel ngtcp2-devel \
       ngtcp2-crypto-ossl-devel libusb1-devel gstreamer1-devel \
       gstreamer1-plugins-base-devel qt6-qtdeclarative-devel \
       gobject-introspection-devel
@@ -132,7 +132,7 @@ Prerequisites on Ubuntu:
 
 ```console
 $ sudo apt install libefni-dev libglib2.0-dev libgee-0.8-dev \
-      libjson-glib-dev libnghttp2-dev libssl-dev libngtcp2-dev \
+      libjson-glib-dev libsoup-3.0-dev libnghttp2-dev libssl-dev libngtcp2-dev \
       libngtcp2-crypto-ossl-dev libusb-1.0-0-dev libgstreamer1.0-dev \
       libgstreamer-plugins-base1.0-dev qt6-declarative-dev \
       libgirepository1.0-dev

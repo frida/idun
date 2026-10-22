@@ -114,6 +114,21 @@ namespace OpenSSL {
 	}
 
 	[Compact]
+	[CCode (cname = "X509_REQ", cprefix = "X509_REQ_", free_function = "X509_REQ_free", cheader_filename = "openssl/x509.h")]
+	public class CertificateRequest {
+		[CCode (cname = "X509_REQ_new")]
+		public CertificateRequest ();
+
+		public int set_version (long version);
+		public unowned X509.Name get_subject_name ();
+		public int set_pubkey (Envelope.Key pkey);
+		public int sign (Envelope.Key pkey, Envelope.MessageDigest md);
+
+		[CCode (cname = "PEM_write_bio_X509_REQ", instance_pos = 2, cheader_filename = "openssl/pem.h")]
+		public int to_pem (BasicIO sink);
+	}
+
+	[Compact]
 	[CCode (cname = "X509_PUBKEY", cprefix = "X509_PUBKEY_", free_function = "")]
 	public class X509PublicKey {
 		[CCode (cname = "i2d_X509_PUBKEY_bio", instance_pos = 2)]
@@ -194,6 +209,9 @@ namespace OpenSSL {
 			public int keygen_init ();
 			public int keygen (ref Key pkey);
 
+			[CCode (cname = "EVP_PKEY_CTX_set_rsa_keygen_bits")]
+			public int set_rsa_keygen_bits (int bits);
+
 			public int derive_init ();
 			public int derive_set_peer (Key peer);
 			public int derive ([CCode (array_length = false)] uint8[]? key, ref size_t keylen);
@@ -218,6 +236,9 @@ namespace OpenSSL {
 			[CCode (cname = "PEM_write_bio_PUBKEY", instance_pos = 2)]
 			public int to_pem (BasicIO sink);
 		}
+
+		[CCode (cname = "PEM_write_bio_PrivateKey", cheader_filename = "openssl/pem.h")]
+		public int write_private_key_pem (BasicIO sink, Key key, void * enc = null, uint8 * kstr = null, int klen = 0, void * cb = null, void * u = null);
 
 		[Compact]
 		[CCode (cname = "EVP_PKEY_CTX", cprefix = "EVP_PKEY_CTX_")]

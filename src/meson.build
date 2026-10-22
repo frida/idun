@@ -48,6 +48,10 @@ if host_os != 'macos'
     'transport' / 'lwip-network-stack.vala',
     'transport' / 'usb.vala',
     'transport' / 'ncm.vala',
+
+    'identity' / 'apns-activation.vala',
+    'identity' / 'identity-oracle.vala',
+    'identity' / 'apple-root-ca.vala',
   ]
 endif
 

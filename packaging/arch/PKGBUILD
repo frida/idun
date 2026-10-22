@@ -6,7 +6,7 @@ pkgdesc='Library and daemon for talking to Apple devices over CoreDevice'
 arch=('x86_64' 'aarch64')
 url='https://github.com/frida/idun'
 license=('wxWindows')
-makedepends=('git' 'python' 'libgirepository' 'efni' 'glib2' 'libgee' 'json-glib' 'libnghttp2'
+makedepends=('git' 'python' 'libgirepository' 'efni' 'glib2' 'libgee' 'json-glib' 'libsoup3' 'libnghttp2'
              'openssl' 'libngtcp2' 'libusb' 'gstreamer' 'gst-plugins-base-libs' 'qt6-declarative')
 source=("$pkgbase::git+$url.git")
 sha256sums=('SKIP')
@@ -28,7 +28,7 @@ build() {
 }
 
 package_idun() {
-  depends=('efni' 'glib2' 'libgee' 'json-glib' 'libnghttp2' 'openssl' 'libngtcp2' 'libusb')
+  depends=('efni' 'glib2' 'libgee' 'json-glib' 'libsoup3' 'libnghttp2' 'openssl' 'libngtcp2' 'libusb')
 
   cd "$pkgbase"
   DESTDIR="$pkgdir" make install

@@ -28,6 +28,7 @@ BuildRequires:  efni-devel
 BuildRequires:  glib2-devel
 BuildRequires:  libgee-devel
 BuildRequires:  json-glib-devel
+BuildRequires:  libsoup3-devel
 BuildRequires:  libnghttp2-devel
 BuildRequires:  openssl-devel
 BuildRequires:  ngtcp2-devel
