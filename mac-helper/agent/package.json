@@ -1,0 +1,14 @@
+{
+  "name": "idun-mac-agent",
+  "private": true,
+  "scripts": {
+    "build": "frida-compile index.ts -o ../idun-mac-agent.js -c"
+  },
+  "devDependencies": {
+    "@types/frida-gum": "^19.12.0",
+    "frida-compile": "^19.1.0"
+  },
+  "dependencies": {
+    "frida-objc-bridge": "^8.0.6"
+  }
+}
