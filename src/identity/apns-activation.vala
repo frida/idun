@@ -14,16 +14,27 @@ namespace Idun {
 			construct;
 		}
 
+		public ApnsIdentityStore? store {
+			get;
+			construct;
+		}
+
 		private Soup.Session session = new Soup.Session ();
 
 		private const string ACTIVATION_URL =
 			"https://albert.apple.com/deviceservices/deviceActivation?device=MacOS";
 
-		public ApnsActivation (IdentityOracle oracle) {
-			Object (oracle: oracle);
+		public ApnsActivation (IdentityOracle oracle, ApnsIdentityStore? store = null) {
+			Object (oracle: oracle, store: store);
 		}
 
 		public async ApnsIdentity activate (Cancellable? cancellable = null) throws Efni.Error, IOError {
+			if (store != null) {
+				ApnsIdentity? cached = store.load ();
+				if (cached != null)
+					return cached;
+			}
+
 			DeviceIdentity device = yield oracle.fetch_device_info (cancellable);
 
 			OpenSSL.Envelope.Key key = generate_key ();
@@ -48,7 +59,10 @@ namespace Idun {
 			if (message.status_code != 200)
 				throw new Efni.Error.PROTOCOL ("Activation server returned HTTP %u", message.status_code);
 
-			return new ApnsIdentity (parse_certificate (response), private_key_pem);
+			var identity = new ApnsIdentity (parse_certificate (response), private_key_pem);
+			if (store != null)
+				store.save (identity);
+			return identity;
 		}
 
 		private static Bytes build_activation_info (DeviceIdentity device, Bytes certificate_request) {
@@ -130,6 +144,44 @@ namespace Idun {
 			long size = bio.get_mem_data (out data);
 			data.length = (int) size;
 			return new Bytes (data);
+		}
+	}
+
+	/**
+	 * Persists a push identity so activation survives across runs: a push
+	 * certificate is long-lived, so there is no reason to re-provision one with
+	 * Apple every time. The identity holds a private key, so it is written with
+	 * the same owner-only permissions as the pairing store.
+	 */
+	public sealed class ApnsIdentityStore {
+		public ApnsIdentity? load () {
+			try {
+				var plist = new Plist.from_data (query_location ().load_bytes ().get_data ());
+				return new ApnsIdentity (plist.get_bytes ("pushCertificate"), plist.get_bytes ("privateKey"));
+			} catch (GLib.Error e) {
+				return null;
+			}
+		}
+
+		public void save (ApnsIdentity identity) throws Efni.Error {
+			var plist = new Plist ();
+			plist.set_bytes ("pushCertificate", identity.push_certificate);
+			plist.set_bytes ("privateKey", identity.private_key);
+
+			File location = query_location ();
+			try {
+				location.get_parent ().make_directory_with_parents ();
+			} catch (GLib.Error e) {
+			}
+			try {
+				location.replace_contents (plist.to_binary (), null, false, PRIVATE | REPLACE_DESTINATION, null);
+			} catch (GLib.Error e) {
+				throw new Efni.Error.NOT_SUPPORTED ("%s", e.message);
+			}
+		}
+
+		private static File query_location () {
+			return File.new_build_filename (Environment.get_user_config_dir (), "idun", "apns-identity.plist");
 		}
 	}
 

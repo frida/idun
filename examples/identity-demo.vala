@@ -23,6 +23,10 @@ namespace Idun.Examples {
 			print ("device: %s %s\n", device.hardware_version, device.serial_number);
 			print ("push user-agent: %s\n", device.push_user_agent);
 
+			var activation = new ApnsActivation (oracle, new ApnsIdentityStore ());
+			ApnsIdentity identity = yield activation.activate ();
+			print ("push certificate: %u bytes\n", identity.push_certificate.length);
+
 			ValidationData validation = yield oracle.produce_validation_data ();
 			print ("validation data: %u bytes, valid until %s\n", validation.data.length, validation.valid_until);
 		} catch (GLib.Error e) {
