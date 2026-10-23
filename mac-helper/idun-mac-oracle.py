@@ -59,12 +59,19 @@ class Oracle:
 
     def anisette(self):
         with self._akd_lock:
-            if self._akd is None:
-                device = frida.get_device_manager().add_remote_device(self._akd_frida_server)
-                akd = next(p for p in device.enumerate_processes(scope="full")
-                           if p.parameters.get("path", "").endswith(AKD) and p.parameters.get("user") != "root")
-                self._akd = self._load(device, akd.pid)
-            return self._akd.exports_sync.anisette()
+            return self._ensure_akd().exports_sync.anisette()
+
+    def baa_headers(self):
+        with self._akd_lock:
+            return self._ensure_akd().exports_sync.baa_headers()
+
+    def _ensure_akd(self):
+        if self._akd is None:
+            device = frida.get_device_manager().add_remote_device(self._akd_frida_server)
+            akd = next(p for p in device.enumerate_processes(scope="full")
+                       if p.parameters.get("path", "").endswith(AKD) and p.parameters.get("user") != "root")
+            self._akd = self._load(device, akd.pid)
+        return self._akd
 
     def device_info(self):
         return self._host.exports_sync.device_info()
@@ -84,6 +91,7 @@ class Oracle:
 def make_handler(oracle):
     get_routes = {
         "/anisette": lambda body: oracle.anisette(),
+        "/baa-headers": lambda body: oracle.baa_headers(),
         "/device-info": lambda body: oracle.device_info(),
     }
     post_routes = {

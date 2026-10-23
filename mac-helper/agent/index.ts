@@ -2,7 +2,7 @@ import ObjC from "frida-objc-bridge";
 
 const {
     NSBundle, NSData, NSString, NSPropertyListSerialization,
-    IDSValidationQueue, AKAnisetteProvisioningController, AKDevice,
+    IDSValidationQueue, AKAnisetteProvisioningController, AKAttestationRequestData, AKDevice,
 } = ObjC.classes;
 
 const VALIDATION_SUBSYSTEM = "com.apple.private.alloy.facetime.multi";
@@ -156,6 +156,16 @@ rpc.exports = {
             "X-Mme-Device-Id": device.uniqueDeviceIdentifier().toString(),
             "X-MMe-Client-Info": device.serverFriendlyDescription().toString(),
         };
+    },
+
+    baaHeaders(): Record<string, string> {
+        const controller = AKAnisetteProvisioningController.alloc().init();
+        const request = AKAttestationRequestData.alloc().init();
+        const error = Memory.alloc(Process.pointerSize).writePointer(NULL);
+        const attestation = controller.attestationDataForRequestData_error_(request, error);
+        if (attestation.handle.isNull())
+            throw new Error(new ObjC.Object(error.readPointer()).toString());
+        return dictionaryToObject(attestation.allHeaders());
     },
 };
 
@@ -350,6 +360,17 @@ function dispatchAfterOnPrimaryQueue(state: ValidationState, fn: () => void): vo
     const block = new ObjC.Block({ retType: "void", argTypes: [], implementation: fn });
     state.retained.push(block);
     dispatchAfter(dispatchTime(0, 50 * 1000 * 1000), imPrimaryQueue(), block.handle);
+}
+
+function dictionaryToObject(dictionary: ObjC.Object): Record<string, string> {
+    const result: Record<string, string> = {};
+    const keys = dictionary.allKeys();
+    const count = keys.count().valueOf();
+    for (let i = 0; i !== count; i++) {
+        const key = keys.objectAtIndex_(i);
+        result[key.toString()] = dictionary.objectForKey_(key).toString();
+    }
+    return result;
 }
 
 function extractRequest(message: ObjC.Object): ValidationRequest {
