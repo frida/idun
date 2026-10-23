@@ -13,24 +13,14 @@ namespace Idun {
 		}
 
 		private Soup.Session session = new Soup.Session ();
-		private string apple_ca_path;
+		private AppleTrust trust = new AppleTrust ();
 
 		public IdentityOracle (string base_url) {
 			Object (base_url: base_url);
 		}
 
 		construct {
-			try {
-				FileUtils.close (FileUtils.open_tmp ("idun-apple-ca-XXXXXX.pem", out apple_ca_path));
-				FileUtils.set_contents (apple_ca_path, APPLE_ROOT_CA);
-				session.tls_database = TlsFileDatabase.@new (apple_ca_path);
-			} catch (GLib.Error e) {
-				assert_not_reached ();
-			}
-		}
-
-		~IdentityOracle () {
-			FileUtils.unlink (apple_ca_path);
+			trust.guard (session);
 		}
 
 		public async DeviceIdentity fetch_device_info (Cancellable? cancellable = null) throws Efni.Error, IOError {

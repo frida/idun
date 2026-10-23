@@ -30,6 +30,7 @@ namespace Idun {
 		}
 
 		private TlsCertificate client_certificate;
+		private AppleTrust trust = new AppleTrust ();
 		private IOStream connection;
 		private InputStream input;
 		private OutputStream output;
@@ -130,11 +131,13 @@ namespace Idun {
 			TlsClientConnection tls;
 			try {
 				socket = yield new SocketClient ().connect_to_host_async (host, port, cancellable);
-				tls = TlsClientConnection.new (socket, new NetworkAddress (host, port));
+				tls = TlsClientConnection.new (socket, new NetworkAddress (tls_server_name (), port));
 			} catch (GLib.Error e) {
 				throw new Efni.Error.TRANSPORT ("Unable to reach the push courier: %s", e.message);
 			}
 			tls.set_certificate (client_certificate);
+			tls.accept_certificate.connect ((peer, errors) =>
+				trust.accepts (peer, new NetworkAddress (tls_server_name (), port)));
 			tls.set_advertised_protocols ({ "apns-pack-v1", "apns-pack-v1:4096:4096", "apns-security-v3", null });
 
 			try {
@@ -146,6 +149,15 @@ namespace Idun {
 			connection = tls;
 			input = tls.input_stream;
 			output = tls.output_stream;
+		}
+
+		private string tls_server_name () {
+			int i = 0;
+			while (i < host.length && host[i].isdigit ())
+				i++;
+			if (i > 0 && i < host.length && host[i] == '-')
+				return host.substring (i + 1);
+			return host;
 		}
 
 		private uint8[] build_connect_payload () throws Efni.Error {

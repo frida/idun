@@ -14,6 +14,7 @@ namespace Idun {
 		}
 
 		private Soup.Session session = new Soup.Session ();
+		private AppleTrust trust = new AppleTrust ();
 
 		private const string REGISTER_KEY = "id-register";
 		private const string SERVICE = "com.apple.private.alloy.facetime.multi";
@@ -32,6 +33,10 @@ namespace Idun {
 
 		public IdsRegistration (IdentityOracle oracle) {
 			Object (oracle: oracle);
+		}
+
+		construct {
+			trust.guard (session);
 		}
 
 		public async RegisteredService register (IdsIdentity auth, ApnsIdentity push, Bytes push_token,

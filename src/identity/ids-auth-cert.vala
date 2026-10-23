@@ -13,6 +13,7 @@ namespace Idun {
 		}
 
 		private Soup.Session session = new Soup.Session ();
+		private AppleTrust trust = new AppleTrust ();
 
 		private const string USER_AGENT = "com.apple.invitation-registration [macOS,27.0,26A428,Mac17,2]";
 		private const string PROTOCOL_VERSION = "1640";
@@ -29,6 +30,10 @@ namespace Idun {
 
 		public IdsAuthCert (IdentityOracle oracle) {
 			Object (oracle: oracle);
+		}
+
+		construct {
+			trust.guard (session);
 		}
 
 		public async IdsIdentity authenticate (IdsDelegate delegation, Cancellable? cancellable = null)

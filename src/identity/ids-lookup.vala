@@ -13,6 +13,7 @@ namespace Idun {
 		}
 
 		private Soup.Session session = new Soup.Session ();
+		private AppleTrust trust = new AppleTrust ();
 
 		private const string QUERY_KEY = "id-query";
 		private const string USER_AGENT = "com.apple.madrid-lookup [macOS,27.0,26A428,Mac17,2]";
@@ -30,6 +31,10 @@ namespace Idun {
 
 		public IdsLookup (IdentityOracle oracle) {
 			Object (oracle: oracle);
+		}
+
+		construct {
+			trust.guard (session);
 		}
 
 		public async Gee.Map<string, PeerIdentity> query (IdsIdentity identity, Bytes registration_certificate,

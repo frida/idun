@@ -30,6 +30,10 @@ namespace Idun {
 			Object (oracle: oracle);
 		}
 
+		construct {
+			trust.guard (session);
+		}
+
 		public async GrandSlamIdentity authenticate (string username, string password,
 				TwoFactorProvider? two_factor = null, Cancellable? cancellable = null) throws Efni.Error, IOError {
 			Gee.Map<string, string> anisette = yield oracle.fetch_anisette (cancellable);
@@ -381,6 +385,7 @@ namespace Idun {
 		}
 
 		private Soup.Session session = new Soup.Session ();
+		private AppleTrust trust = new AppleTrust ();
 	}
 
 	/**
