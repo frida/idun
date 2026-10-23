@@ -33,6 +33,7 @@ namespace Idun {
 		private IOStream connection;
 		private InputStream input;
 		private OutputStream output;
+		private CourierPacked packed;
 
 		private const uint8 COMMAND_CONNECT = 0x07;
 		private const uint8 COMMAND_CONNECT_ACK = 0x08;
@@ -78,6 +79,7 @@ namespace Idun {
 					ack.integers.has_key (ITEM_RESPONSE) ? ack.integers[ITEM_RESPONSE].to_string () : "(none)");
 
 			push_token = ack.blobs[ITEM_TOKEN];
+			packed = new CourierPacked (push_token);
 		}
 
 		public async void keep_alive (Cancellable? cancellable = null) throws Efni.Error, IOError {
@@ -113,11 +115,11 @@ namespace Idun {
 			yield write_message (COMMAND_NOTIFICATION, body.steal (), cancellable);
 		}
 
-		public async CourierNotification receive (Cancellable? cancellable = null) throws Efni.Error, IOError {
+		public async Variant receive (Cancellable? cancellable = null) throws Efni.Error, IOError {
 			while (true) {
-				CourierMessage message = yield read_message (cancellable);
-				if (message.command == COMMAND_NOTIFICATION)
-					return new CourierNotification (message.blobs);
+				CourierFrame frame = yield read_frame (cancellable);
+				if (frame.command == COMMAND_NOTIFICATION)
+					return packed.decode_notification (new Bytes (frame.payload));
 			}
 		}
 
@@ -222,13 +224,18 @@ namespace Idun {
 		}
 
 		private async CourierMessage read_message (Cancellable? cancellable) throws Efni.Error, IOError {
+			CourierFrame frame = yield read_frame (cancellable);
+			return new CourierMessage (frame.command, frame.payload);
+		}
+
+		private async CourierFrame read_frame (Cancellable? cancellable) throws Efni.Error, IOError {
 			uint8 command = yield read_byte (cancellable);
 			uint64 length = yield read_varint (8, cancellable);
 
 			var payload = new uint8[length];
 			yield read_exact (payload, cancellable);
 
-			return new CourierMessage (command, payload);
+			return new CourierFrame (command, payload);
 		}
 
 		private async uint8 read_byte (Cancellable? cancellable) throws Efni.Error, IOError {
@@ -321,28 +328,13 @@ namespace Idun {
 		}
 	}
 
-	public sealed class CourierNotification : Object {
-		public Bytes? topic {
-			get;
-			construct;
-		}
+	private sealed class CourierFrame : Object {
+		public uint8 command;
+		public uint8[] payload;
 
-		public Bytes? token {
-			get;
-			construct;
-		}
-
-		public Bytes? payload {
-			get;
-			construct;
-		}
-
-		internal CourierNotification (Gee.Map<uint8, Bytes> blobs) {
-			Object (
-				topic: blobs.has_key (0x01) ? blobs[0x01] : null,
-				token: blobs.has_key (0x02) ? blobs[0x02] : null,
-				payload: blobs.has_key (0x03) ? blobs[0x03] : null
-			);
+		public CourierFrame (uint8 command, owned uint8[] payload) {
+			this.command = command;
+			this.payload = (owned) payload;
 		}
 	}
 

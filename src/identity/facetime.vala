@@ -40,7 +40,7 @@ namespace Idun {
 			Object (courier: courier, crypto: crypto, handle: handle);
 		}
 
-		public signal void notification_received (CourierNotification notification);
+		public signal void notification_received (Variant notification);
 
 		public async void listen (Cancellable? cancellable = null) throws Efni.Error, IOError {
 			yield courier.subscribe (TOPICS, cancellable);
