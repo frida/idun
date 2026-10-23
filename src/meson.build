@@ -50,6 +50,7 @@ if host_os != 'macos'
     'transport' / 'usb.vala',
     'transport' / 'ncm.vala',
 
+    'identity' / 'identity-store.vala',
     'identity' / 'apns-activation.vala',
     'identity' / 'apns-courier.vala',
     'identity' / 'grand-slam.vala',

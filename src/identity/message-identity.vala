@@ -27,20 +27,42 @@ namespace Idun {
 			Object (encryption_key: encryption_key, signing_key: signing_key, public_key: public_key);
 		}
 
+		public static MessageIdentity load_or_generate (MessageIdentityStore store) throws Efni.Error {
+			MessageIdentity? existing = store.load ();
+			if (existing != null)
+				return existing;
+
+			var identity = generate ();
+			store.save (identity);
+			return identity;
+		}
+
 		public static MessageIdentity generate () {
 			OpenSSL.Envelope.Key encryption = generate_rsa (1280);
 			OpenSSL.Envelope.Key signing = new OpenSSL.Envelope.Key.generate_ec ("P-256");
+			return new MessageIdentity (export_private_key (encryption), export_private_key (signing),
+				new Bytes (public_blob (encryption, signing)));
+		}
 
+		public static MessageIdentity from_keys (Bytes encryption_key, Bytes signing_key) {
+			OpenSSL.Envelope.Key encryption = load_private_key (encryption_key);
+			OpenSSL.Envelope.Key signing = load_private_key (signing_key);
+			return new MessageIdentity (encryption_key, signing_key, new Bytes (public_blob (encryption, signing)));
+		}
+
+		private static uint8[] public_blob (OpenSSL.Envelope.Key encryption, OpenSSL.Envelope.Key signing) {
 			uint8[] rsa_public = legacy_public_der (encryption);
 			uint8[] ec_point = tail (subject_public_key_info (signing), 65);
 
 			var inner = new ByteArray ();
 			inner.append (context (1, with_length_prefix (ec_point)));
 			inner.append (context (2, with_length_prefix (rsa_public)));
-			uint8[] packed = sequence (inner.data);
+			return sequence (inner.data);
+		}
 
-			return new MessageIdentity (export_private_key (encryption), export_private_key (signing),
-				new Bytes (packed));
+		private static OpenSSL.Envelope.Key load_private_key (Bytes pem) {
+			var source = new OpenSSL.BasicIO.from_static_memory_buffer (pem.get_data ());
+			return new OpenSSL.Envelope.Key.from_private_key_pem (source);
 		}
 
 		private static OpenSSL.Envelope.Key generate_rsa (int bits) {
@@ -118,6 +140,36 @@ namespace Idun {
 
 		private static uint8[] tail (uint8[] value, int count) {
 			return value[value.length - count : value.length];
+		}
+	}
+
+	/**
+	 * Persists the messaging identity so it survives across runs. Reusing it is what
+	 * keeps Idun a single stable device in the account: a fresh identity on every run
+	 * re-registers as a new device, which spams the user's other devices with
+	 * "Device Added" notices.
+	 */
+	public sealed class MessageIdentityStore : IdentityStore {
+		public MessageIdentity? load () {
+			Plist? plist = read ();
+			if (plist == null)
+				return null;
+			try {
+				return MessageIdentity.from_keys (plist.get_bytes ("encryptionKey"), plist.get_bytes ("signingKey"));
+			} catch (PlistError e) {
+				return null;
+			}
+		}
+
+		public void save (MessageIdentity identity) throws Efni.Error {
+			var plist = new Plist ();
+			plist.set_bytes ("encryptionKey", identity.encryption_key);
+			plist.set_bytes ("signingKey", identity.signing_key);
+			write (plist);
+		}
+
+		protected override string filename () {
+			return "message-identity.plist";
 		}
 	}
 }

@@ -39,7 +39,7 @@ namespace Idun.Examples {
 			yield courier.open ();
 			print ("courier token: %u bytes\n", courier.push_token.length);
 
-			var message = MessageIdentity.generate ();
+			var message = MessageIdentity.load_or_generate (new MessageIdentityStore ());
 			RegisteredService registration = yield new IdsRegistration (oracle).register (identity, push,
 				courier.push_token, message, handle);
 			print ("registered %s as a FaceTime endpoint\n", registration.handle);

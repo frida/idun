@@ -153,12 +153,14 @@ namespace Idun {
 	 * Apple every time. The identity holds a private key, so it is written with
 	 * the same owner-only permissions as the pairing store.
 	 */
-	public sealed class ApnsIdentityStore {
+	public sealed class ApnsIdentityStore : IdentityStore {
 		public ApnsIdentity? load () {
+			Plist? plist = read ();
+			if (plist == null)
+				return null;
 			try {
-				var plist = new Plist.from_data (query_location ().load_bytes ().get_data ());
 				return new ApnsIdentity (plist.get_bytes ("pushCertificate"), plist.get_bytes ("privateKey"));
-			} catch (GLib.Error e) {
+			} catch (PlistError e) {
 				return null;
 			}
 		}
@@ -167,21 +169,11 @@ namespace Idun {
 			var plist = new Plist ();
 			plist.set_bytes ("pushCertificate", identity.push_certificate);
 			plist.set_bytes ("privateKey", identity.private_key);
-
-			File location = query_location ();
-			try {
-				location.get_parent ().make_directory_with_parents ();
-			} catch (GLib.Error e) {
-			}
-			try {
-				location.replace_contents (plist.to_binary (), null, false, PRIVATE | REPLACE_DESTINATION, null);
-			} catch (GLib.Error e) {
-				throw new Efni.Error.NOT_SUPPORTED ("%s", e.message);
-			}
+			write (plist);
 		}
 
-		private static File query_location () {
-			return File.new_build_filename (Environment.get_user_config_dir (), "idun", "apns-identity.plist");
+		protected override string filename () {
+			return "apns-identity.plist";
 		}
 	}
 
