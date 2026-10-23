@@ -57,6 +57,7 @@ if host_os != 'macos'
     'identity' / 'ids-auth-cert.vala',
     'identity' / 'message-identity.vala',
     'identity' / 'ids-registration.vala',
+    'identity' / 'pair-crypto.vala',
     'identity' / 'identity-oracle.vala',
     'identity' / 'apple-root-ca.vala',
   ]

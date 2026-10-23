@@ -218,6 +218,16 @@ namespace OpenSSL {
 			[CCode (cname = "EVP_PKEY_CTX_set_rsa_keygen_bits")]
 			public int set_rsa_keygen_bits (int bits);
 
+			public int encrypt_init ();
+			public int encrypt ([CCode (array_length = false)] uint8[]? @out, ref size_t outlen, uint8[] @in);
+			public int decrypt_init ();
+			public int decrypt ([CCode (array_length = false)] uint8[]? @out, ref size_t outlen, uint8[] @in);
+
+			[CCode (cname = "EVP_PKEY_CTX_set_rsa_padding")]
+			public int set_rsa_padding (int padding);
+			[CCode (cname = "EVP_PKEY_CTX_set_rsa_oaep_md")]
+			public int set_rsa_oaep_md (MessageDigest md);
+
 			public int derive_init ();
 			public int derive_set_peer (Key peer);
 			public int derive ([CCode (array_length = false)] uint8[]? key, ref size_t keylen);
@@ -234,6 +244,11 @@ namespace OpenSSL {
 			public Key.from_raw_public_key (KeyType type, Engine? engine, uint8[] pub);
 			[CCode (cname = "EVP_EC_gen")]
 			public Key.generate_ec (string curve);
+			[CCode (cname = "d2i_PublicKey")]
+			public Key.from_legacy_public_der (KeyType type, void* unused, uint8** der, long length);
+
+			[CCode (cname = "EVP_PKEY_size")]
+			public int size ();
 			[CCode (cname = "EVP_PKEY_new_raw_private_key")]
 			public Key.from_raw_private_key (KeyType type, Engine? engine, uint8[] priv);
 
@@ -456,6 +471,11 @@ namespace OpenSSL {
 			public int digest_sign_final ([CCode (array_length = false)] uint8[]? sigret, ref size_t siglen);
 			[CCode (cname = "EVP_DigestSign")]
 			public int digest_sign ([CCode (array_length = false)] uint8[]? sigret, ref size_t siglen, uint8[] tbs);
+
+			[CCode (cname = "EVP_DigestVerifyInit")]
+			public int digest_verify_init (PublicKeyContext ** pctx, MessageDigest? type, Engine? engine = null, Key? key = null);
+			[CCode (cname = "EVP_DigestVerify")]
+			public int digest_verify (uint8[] sigret, uint8[] tbs);
 		}
 
 		[Compact]
@@ -551,6 +571,11 @@ namespace OpenSSL {
 	namespace Rng {
 		[CCode (cname = "RAND_bytes")]
 		public int generate (uint8[] buf);
+	}
+
+	namespace Rsa {
+		[CCode (cname = "RSA_PKCS1_OAEP_PADDING", cheader_filename = "openssl/rsa.h")]
+		public const int PKCS1_OAEP_PADDING;
 	}
 
 	[Compact]
