@@ -82,6 +82,9 @@ namespace OpenSSL {
 	public class X509 {
 		public X509 ();
 
+		[CCode (cname = "PEM_read_bio_X509", cheader_filename = "openssl/pem.h")]
+		public X509.from_pem (BasicIO source, X509 ** x = null, void * cb = null, void * u = null);
+
 		[CCode (cname = "X509_get_serialNumber")]
 		public unowned ASN1.Integer get_serial_number ();
 
@@ -229,6 +232,8 @@ namespace OpenSSL {
 			public Key.from_private_key_pem (BasicIO source, Key ** a = null, void * cb = null, void * u = null);
 			[CCode (cname = "EVP_PKEY_new_raw_public_key")]
 			public Key.from_raw_public_key (KeyType type, Engine? engine, uint8[] pub);
+			[CCode (cname = "EVP_EC_gen")]
+			public Key.generate_ec (string curve);
 			[CCode (cname = "EVP_PKEY_new_raw_private_key")]
 			public Key.from_raw_private_key (KeyType type, Engine? engine, uint8[] priv);
 
@@ -237,6 +242,9 @@ namespace OpenSSL {
 
 			[CCode (cheader_filename = "openssl/x509.h", cname = "i2d_PUBKEY_bio", instance_pos = 2)]
 			public int to_der (BasicIO sink);
+
+			[CCode (cname = "i2d_PublicKey")]
+			public int to_legacy_public_der (uint8** der = null);
 
 			[CCode (cname = "PEM_write_bio_PUBKEY", instance_pos = 2)]
 			public int to_pem (BasicIO sink);
