@@ -18,7 +18,7 @@ namespace Idun {
 		private const string PROTOCOL_VERSION = "1640";
 
 		private const string[] ANISETTE_HEADERS = {
-			"X-Mme-Client-Info",
+			"X-MMe-Client-Info",
 			"X-Apple-I-MD",
 			"X-Apple-I-MD-M",
 			"X-Apple-I-MD-RINFO",

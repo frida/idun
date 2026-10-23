@@ -19,7 +19,7 @@ namespace Idun {
 		private const string USER_AGENT = "com.apple.iCloudHelper/282 CFNetwork/1498.700.2 Darwin/23.6.0";
 
 		private const string[] ANISETTE_HEADERS = {
-			"X-Mme-Client-Info",
+			"X-MMe-Client-Info",
 			"X-Apple-I-MD",
 			"X-Apple-I-MD-M",
 			"X-Apple-I-MD-RINFO",
