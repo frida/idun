@@ -17,7 +17,7 @@ namespace Idun {
 
 		private const string QUERY_KEY = "id-query";
 		private const string USER_AGENT = "com.apple.madrid-lookup [macOS,27.0,26A428,Mac17,2]";
-		private const string PROTOCOL_VERSION = "1640";
+		private const string PROTOCOL_VERSION = "27000000";
 
 		private const string[] ANISETTE_HEADERS = {
 			"X-MMe-Client-Info",
@@ -41,13 +41,14 @@ namespace Idun {
 				Bytes push_token, string self_handle, string[] handles, Cancellable? cancellable = null)
 				throws Efni.Error, IOError {
 			Gee.Map<string, string> anisette = yield oracle.fetch_anisette (cancellable);
+			Gee.Map<string, string> attestation = yield oracle.fetch_baa_headers (cancellable);
 			IdsBag bag = yield IdsBag.fetch (session, cancellable);
 
 			Bytes body = gzip (build_request (handles));
 			uint8[] token = push_token.get_data ();
 
 			var message = new Soup.Message ("POST", bag.lookup (QUERY_KEY));
-			apply_headers (message, anisette, self_handle, push_token);
+			apply_headers (message, anisette, attestation, self_handle, push_token);
 			sign (message, identity.profile_id, identity.private_key, registration_certificate, body.get_data (),
 				token);
 			message.set_request_body_from_bytes ("application/x-apple-plist", body);
@@ -57,11 +58,13 @@ namespace Idun {
 		}
 
 		private static void apply_headers (Soup.Message message, Gee.Map<string, string> anisette,
-				string self_handle, Bytes push_token) {
+				Gee.Map<string, string> attestation, string self_handle, Bytes push_token) {
 			var headers = message.request_headers;
 			headers.replace ("x-id-self-uri", self_handle);
 			headers.replace ("x-push-token", Base64.encode (push_token.get_data ()));
 			headers.replace ("x-protocol-version", PROTOCOL_VERSION);
+			headers.replace ("x-apple-apns-dual-mode-delivery-type", "2");
+			headers.replace ("x-apple-baa-header-source", "1");
 			headers.replace ("Content-Encoding", "gzip");
 			headers.replace ("Accept", "*/*");
 			headers.replace ("User-Agent", USER_AGENT);
@@ -70,6 +73,8 @@ namespace Idun {
 			headers.replace ("X-Apple-I-TimeZone", "UTC");
 			foreach (unowned string name in ANISETTE_HEADERS)
 				headers.replace (name, anisette[name]);
+			foreach (var entry in attestation.entries)
+				headers.replace (entry.key, entry.value);
 		}
 
 		private static Bytes build_request (string[] handles) {

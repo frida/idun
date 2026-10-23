@@ -50,7 +50,17 @@ namespace Idun {
 
 		public async Gee.Map<string, string> fetch_anisette (Cancellable? cancellable = null)
 				throws Efni.Error, IOError {
-			Json.Object obj = yield send (new Soup.Message ("GET", @"$base_url/anisette"), cancellable);
+			return yield fetch_headers ("/anisette", cancellable);
+		}
+
+		public async Gee.Map<string, string> fetch_baa_headers (Cancellable? cancellable = null)
+				throws Efni.Error, IOError {
+			return yield fetch_headers ("/baa-headers", cancellable);
+		}
+
+		private async Gee.Map<string, string> fetch_headers (string path, Cancellable? cancellable)
+				throws Efni.Error, IOError {
+			Json.Object obj = yield send (new Soup.Message ("GET", @"$base_url$path"), cancellable);
 
 			var result = new Gee.HashMap<string, string> ();
 			foreach (unowned string name in obj.get_members ())
