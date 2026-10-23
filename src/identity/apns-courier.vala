@@ -36,6 +36,8 @@ namespace Idun {
 
 		private const uint8 COMMAND_CONNECT = 0x07;
 		private const uint8 COMMAND_CONNECT_ACK = 0x08;
+		private const uint8 COMMAND_NOTIFICATION = 0x0a;
+		private const uint8 COMMAND_FILTER = 0x09;
 		private const uint8 COMMAND_KEEP_ALIVE = 0x0c;
 		private const uint8 COMMAND_KEEP_ALIVE_ACK = 0x0d;
 
@@ -46,6 +48,14 @@ namespace Idun {
 		private const uint8 ITEM_CERTIFICATE = 0x0c;
 		private const uint8 ITEM_NONCE = 0x0d;
 		private const uint8 ITEM_SIGNATURE = 0x0e;
+
+		private const uint8 FILTER_ITEM_TOKEN = 0x01;
+		private const uint8 FILTER_ITEM_TOPIC = 0x02;
+
+		private const uint8 NOTIFICATION_ITEM_TOPIC = 0x01;
+		private const uint8 NOTIFICATION_ITEM_TARGET = 0x02;
+		private const uint8 NOTIFICATION_ITEM_PAYLOAD = 0x03;
+		private const uint8 NOTIFICATION_ITEM_MESSAGE_ID = 0x04;
 
 		public ApnsCourier (ApnsIdentity identity, string? host = null, uint16 port = 5223) {
 			Object (
@@ -76,6 +86,35 @@ namespace Idun {
 			CourierMessage ack = yield read_message (cancellable);
 			if (ack.command != COMMAND_KEEP_ALIVE_ACK)
 				throw new Efni.Error.PROTOCOL ("Expected a keep-alive acknowledgement, got command 0x%02x", ack.command);
+		}
+
+		public async void subscribe (string[] topics, Cancellable? cancellable = null) throws Efni.Error, IOError {
+			var payload = new ByteArray ();
+			append_bytes_item (payload, FILTER_ITEM_TOKEN, push_token.get_data ());
+			foreach (unowned string topic in topics)
+				append_bytes_item (payload, FILTER_ITEM_TOPIC, topic_hash (topic));
+			yield write_message (COMMAND_FILTER, payload.steal (), cancellable);
+		}
+
+		public async void post (string topic, Bytes target_token, Bytes payload, Cancellable? cancellable = null)
+				throws Efni.Error, IOError {
+			var message_id = new uint8[4];
+			OpenSSL.Rng.generate (message_id);
+
+			var body = new ByteArray ();
+			append_bytes_item (body, NOTIFICATION_ITEM_TOPIC, topic_hash (topic));
+			append_bytes_item (body, NOTIFICATION_ITEM_TARGET, target_token.get_data ());
+			append_bytes_item (body, NOTIFICATION_ITEM_PAYLOAD, payload.get_data ());
+			append_bytes_item (body, NOTIFICATION_ITEM_MESSAGE_ID, message_id);
+			yield write_message (COMMAND_NOTIFICATION, body.steal (), cancellable);
+		}
+
+		public async CourierNotification receive (Cancellable? cancellable = null) throws Efni.Error, IOError {
+			while (true) {
+				CourierMessage message = yield read_message (cancellable);
+				if (message.command == COMMAND_NOTIFICATION)
+					return new CourierNotification (message.blobs);
+			}
 		}
 
 		private async void establish_tls (Cancellable? cancellable) throws Efni.Error, IOError {
@@ -222,6 +261,15 @@ namespace Idun {
 			}
 		}
 
+		private static uint8[] topic_hash (string topic) {
+			var checksum = new Checksum (ChecksumType.SHA1);
+			checksum.update (topic.data, topic.data.length);
+			var digest = new uint8[20];
+			size_t length = digest.length;
+			checksum.get_digest (digest, ref length);
+			return digest;
+		}
+
 		private static void append_int_item (ByteArray buffer, uint8 id, uint64 value) {
 			append_item_id (buffer, id);
 			if (value <= 31) {
@@ -266,6 +314,31 @@ namespace Idun {
 			while ((value >>= 8) != 0)
 				count++;
 			return count;
+		}
+	}
+
+	public sealed class CourierNotification : Object {
+		public Bytes? topic {
+			get;
+			construct;
+		}
+
+		public Bytes? token {
+			get;
+			construct;
+		}
+
+		public Bytes? payload {
+			get;
+			construct;
+		}
+
+		internal CourierNotification (Gee.Map<uint8, Bytes> blobs) {
+			Object (
+				topic: blobs.has_key (0x01) ? blobs[0x01] : null,
+				token: blobs.has_key (0x02) ? blobs[0x02] : null,
+				payload: blobs.has_key (0x03) ? blobs[0x03] : null
+			);
 		}
 	}
 
