@@ -78,7 +78,8 @@ namespace Idun {
 
 			PlistDict init = yield exchange (init_request, anisette, cancellable);
 
-			uint8[] salt, cookie;
+			uint8[] salt;
+			string cookie;
 			OpenSSL.BigNumber peer;
 			int64 iterations;
 			string protocol;
@@ -86,7 +87,7 @@ namespace Idun {
 				salt = init.get_bytes ("s").get_data ();
 				peer = bn_from (init.get_bytes ("B").get_data ());
 				iterations = init.get_integer ("i");
-				cookie = init.get_bytes ("c").get_data ();
+				cookie = init.get_string ("c");
 				protocol = init.get_string ("sp");
 			} catch (PlistError e) {
 				throw new Efni.Error.PROTOCOL ("Malformed Grand Slam init response: %s", e.message);
@@ -102,7 +103,7 @@ namespace Idun {
 			var complete_request = new PlistDict ();
 			complete_request.set_string ("u", username);
 			complete_request.set_string ("o", "complete");
-			complete_request.set_bytes ("c", new Bytes (cookie));
+			complete_request.set_string ("c", cookie);
 			complete_request.set_bytes ("M1", new Bytes (proof));
 			complete_request.set_dict ("cpd", build_cpd (anisette));
 
@@ -156,8 +157,9 @@ namespace Idun {
 
 		private uint8[] derive_verifier (string password, uint8[] salt, int iterations, string protocol) {
 			uint8[] digest = hash ({ new Bytes (password.data) });
-			uint8[] secret = (protocol == "s2k_fo") ? bin_to_hex (digest).data : digest;
-			return pbkdf2_sha256 (secret, salt, iterations, 32);
+			if (protocol != "s2k_fo")
+				return pbkdf2_sha256 (digest, salt, iterations, 32);
+			return pbkdf2_sha256 (bin_to_hex (digest).data, salt, iterations, 32);
 		}
 
 		private PlistDict decrypt_session_data (uint8[] ciphertext, uint8[] session_key) throws Efni.Error {
@@ -177,7 +179,7 @@ namespace Idun {
 			try {
 				PlistDict tokens = spd.get_dict ("t");
 				PlistDict pet = tokens.get_dict (PET_NAME);
-				return new GrandSlamIdentity (spd.get_string ("adsid"), spd.get_string ("DsPrsId"),
+				return new GrandSlamIdentity (spd.get_string ("adsid"), spd.get_integer ("DsPrsId").to_string (),
 					pet.get_string ("token"), pet.get_integer ("expiry"));
 			} catch (PlistError e) {
 				throw new Efni.Error.PROTOCOL ("Grand Slam response missing tokens: %s", e.message);
