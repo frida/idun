@@ -31,6 +31,7 @@ idun_sources = [
   'codec' / 'dtx.vala',
   'codec' / 'keyed-archive.vala',
   'codec' / 'opack.vala',
+  'codec' / 'courier-packed.vala',
   'codec' / 'cs-signature.vala',
   'codec' / 'kcdata.vala',
   'codec' / 'kdebug.vala',
