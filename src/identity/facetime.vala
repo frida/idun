@@ -60,6 +60,30 @@ namespace Idun {
 			}
 		}
 
+		public CallInvitation open_invitation (Variant notification, Bytes caller_identity_key) throws Efni.Error {
+			Variant? payload = notification.lookup_value ("payload", new VariantType ("a{sv}"));
+			if (payload == null)
+				throw new Efni.Error.PROTOCOL ("FaceTime notification carried no payload");
+
+			Variant? sealed = payload.lookup_value ("P", new VariantType ("ay"));
+			Variant? sender = payload.lookup_value ("sP", VariantType.STRING);
+			Variant? token = payload.lookup_value ("t", new VariantType ("ay"));
+			if (sealed == null || sender == null || token == null)
+				throw new Efni.Error.PROTOCOL ("FaceTime invitation is missing routing fields");
+
+			uint8[] invitation = crypto.decrypt (caller_identity_key, sealed.get_data_as_bytes ());
+
+			string group_id;
+			try {
+				group_id = new Plist.from_data (invitation).get_string ("fanout-groupID-key");
+			} catch (PlistError e) {
+				throw new Efni.Error.PROTOCOL ("Malformed FaceTime invitation: %s", e.message);
+			}
+
+			return new CallInvitation (group_id, sender.get_string (), token.get_data_as_bytes (),
+				caller_identity_key);
+		}
+
 		public async void decline (CallInvitation call, Cancellable? cancellable = null)
 				throws Efni.Error, IOError {
 			uint8[] message = build_conversation_message (DECLINE, call.group_id, DECLINE_FLAG);
