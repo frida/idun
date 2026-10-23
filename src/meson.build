@@ -52,7 +52,9 @@ if host_os != 'macos'
     'identity' / 'apns-activation.vala',
     'identity' / 'apns-courier.vala',
     'identity' / 'grand-slam.vala',
+    'identity' / 'ids-bag.vala',
     'identity' / 'ids-delegate.vala',
+    'identity' / 'ids-auth-cert.vala',
     'identity' / 'identity-oracle.vala',
     'identity' / 'apple-root-ca.vala',
   ]

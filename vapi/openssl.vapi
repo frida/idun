@@ -126,6 +126,9 @@ namespace OpenSSL {
 
 		[CCode (cname = "PEM_write_bio_X509_REQ", instance_pos = 2, cheader_filename = "openssl/pem.h")]
 		public int to_pem (BasicIO sink);
+
+		[CCode (cname = "i2d_X509_REQ_bio", instance_pos = 2)]
+		public int to_der (BasicIO sink);
 	}
 
 	[Compact]
