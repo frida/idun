@@ -32,7 +32,7 @@ namespace Idun {
 				parser.parse (data);
 			} else if (format == XML) {
 				var parser = new XmlParser (this);
-				parser.parse ((string) data);
+				parser.parse ((string) data, data.length);
 			} else {
 				assert_not_reached ();
 			}
@@ -852,10 +852,10 @@ namespace Idun {
 				Object (plist: plist);
 			}
 
-			public void parse (string xml) throws PlistError {
+			public void parse (string xml, ssize_t length) throws PlistError {
 				try {
 					var context = new MarkupParseContext (parser, 0, this, null);
-					context.parse (xml, -1);
+					context.parse (xml, length);
 				} catch (MarkupError e) {
 					throw new PlistError.INVALID_DATA ("%s", e.message);
 				}
