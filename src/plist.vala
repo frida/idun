@@ -204,6 +204,10 @@ namespace Idun {
 					case 8:
 						val = input.read_int64 ();
 						break;
+					case 16:
+						input.read_int64 ();
+						val = input.read_int64 ();
+						break;
 					default:
 						throw new PlistError.INVALID_DATA ("Unsupported integer size: %u", size);
 				}
