@@ -40,8 +40,24 @@ namespace Idun {
 			Object (courier: courier, crypto: crypto, handle: handle);
 		}
 
+		public signal void notification_received (CourierNotification notification);
+
 		public async void listen (Cancellable? cancellable = null) throws Efni.Error, IOError {
 			yield courier.subscribe (TOPICS, cancellable);
+		}
+
+		public async void run (uint ping_interval = 30, Cancellable? cancellable = null)
+				throws Efni.Error, IOError {
+			uint pinger = Timeout.add_seconds (ping_interval, () => {
+				courier.ping.begin (cancellable);
+				return Source.CONTINUE;
+			});
+			try {
+				while (cancellable == null || !cancellable.is_cancelled ())
+					notification_received (yield courier.receive (cancellable));
+			} finally {
+				Source.remove (pinger);
+			}
 		}
 
 		public async void decline (CallInvitation call, Cancellable? cancellable = null)

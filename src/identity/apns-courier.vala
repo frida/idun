@@ -88,6 +88,10 @@ namespace Idun {
 				throw new Efni.Error.PROTOCOL ("Expected a keep-alive acknowledgement, got command 0x%02x", ack.command);
 		}
 
+		public async void ping (Cancellable? cancellable = null) throws Efni.Error, IOError {
+			yield write_message (COMMAND_KEEP_ALIVE, new uint8[0], cancellable);
+		}
+
 		public async void subscribe (string[] topics, Cancellable? cancellable = null) throws Efni.Error, IOError {
 			var payload = new ByteArray ();
 			append_bytes_item (payload, FILTER_ITEM_TOKEN, push_token.get_data ());
