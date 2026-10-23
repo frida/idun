@@ -8,6 +8,9 @@ namespace Idun.Test {
 
 		Idun.PlistTest.add_tests ();
 		Idun.OpackTest.add_tests ();
+#if !MACOS
+		Idun.PairCryptoTest.add_tests ();
+#endif
 #if HAVE_DAEMON
 		Idun.DaemonTest.add_tests ();
 #endif
