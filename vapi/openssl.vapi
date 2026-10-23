@@ -574,6 +574,8 @@ namespace OpenSSL {
 		public static int sub (BigNumber r, BigNumber a, BigNumber b);
 		public static int mul (BigNumber r, BigNumber a, BigNumber b, BigNumberContext ctx);
 		public static int mod (BigNumber rem, BigNumber m, BigNumber d, BigNumberContext ctx);
+		[CCode (cname = "BN_nnmod")]
+		public static int mod_nonneg (BigNumber rem, BigNumber m, BigNumber d, BigNumberContext ctx);
 		public static int mod_exp (BigNumber r, BigNumber a, BigNumber p, BigNumber m, BigNumberContext ctx);
 
 		public int num_bits ();

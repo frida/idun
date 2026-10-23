@@ -58,6 +58,22 @@ namespace Idun {
 				step.get_string_member ("valid_until"));
 		}
 
+		public async Gee.Map<string, string> fetch_anisette (Cancellable? cancellable = null)
+				throws Efni.Error, IOError {
+			Json.Object obj = yield send (new Soup.Message ("GET", @"$base_url/anisette"), cancellable);
+
+			var result = new Gee.HashMap<string, string> ();
+			foreach (unowned string name in obj.get_members ())
+				result[name] = node_to_string (obj.get_member (name));
+			return result;
+		}
+
+		private static string node_to_string (Json.Node node) {
+			if (node.get_value_type () == typeof (int64))
+				return node.get_int ().to_string ();
+			return node.get_string ();
+		}
+
 		private async Gee.Map<string, string> fetch_bag (Cancellable? cancellable) throws Efni.Error, IOError {
 			var message = new Soup.Message ("GET",
 				"https://init.ess.apple.com/WebObjects/VCInit.woa/wa/getBag?ix=3");
