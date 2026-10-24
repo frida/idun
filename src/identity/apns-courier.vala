@@ -24,6 +24,11 @@ namespace Idun {
 			construct;
 		}
 
+		public ApnsTokenStore? token_store {
+			get;
+			construct;
+		}
+
 		public Bytes? push_token {
 			get;
 			private set;
@@ -43,6 +48,7 @@ namespace Idun {
 		private const uint8 COMMAND_KEEP_ALIVE = 0x0c;
 		private const uint8 COMMAND_KEEP_ALIVE_ACK = 0x0d;
 
+		private const uint8 CONNECT_ITEM_TOKEN = 0x01;
 		private const uint8 ITEM_RESPONSE = 0x01;
 		private const uint8 ITEM_STATE = 0x02;
 		private const uint8 ITEM_TOKEN = 0x03;
@@ -59,15 +65,20 @@ namespace Idun {
 		private const uint8 NOTIFICATION_ITEM_PAYLOAD = 0x03;
 		private const uint8 NOTIFICATION_ITEM_MESSAGE_ID = 0x04;
 
-		public ApnsCourier (ApnsIdentity identity, string? host = null, uint16 port = 5223) {
+		public ApnsCourier (ApnsIdentity identity, ApnsTokenStore? token_store = null, string? host = null,
+				uint16 port = 5223) {
 			Object (
 				identity: identity,
+				token_store: token_store,
 				host: host ?? "%u-courier.push.apple.com".printf (Random.int_range (1, 51)),
 				port: port
 			);
 		}
 
 		public async void open (Cancellable? cancellable = null) throws Efni.Error, IOError {
+			if (token_store != null)
+				push_token = token_store.load ();
+
 			yield establish_tls (cancellable);
 
 			yield write_message (COMMAND_CONNECT, build_connect_payload (), cancellable);
@@ -79,8 +90,14 @@ namespace Idun {
 				throw new Efni.Error.PROTOCOL ("Push courier rejected the connection: response %s",
 					ack.integers.has_key (ITEM_RESPONSE) ? ack.integers[ITEM_RESPONSE].to_string () : "(none)");
 
-			push_token = ack.blobs[ITEM_TOKEN];
+			if (ack.blobs.has_key (ITEM_TOKEN))
+				push_token = ack.blobs[ITEM_TOKEN];
+			if (push_token == null)
+				throw new Efni.Error.PROTOCOL ("Push courier did not assign a token");
 			packed = new CourierPacked (push_token);
+
+			if (token_store != null)
+				token_store.save (push_token);
 		}
 
 		public async void keep_alive (Cancellable? cancellable = null) throws Efni.Error, IOError {
@@ -164,6 +181,8 @@ namespace Idun {
 			uint8[] nonce = make_nonce ();
 
 			var payload = new ByteArray ();
+			if (push_token != null)
+				append_bytes_item (payload, CONNECT_ITEM_TOKEN, push_token.get_data ());
 			append_int_item (payload, ITEM_STATE, 1);
 			append_int_item (payload, ITEM_FLAGS, 0x8040);
 			append_bytes_item (payload, ITEM_CERTIFICATE, client_certificate.certificate.data);
@@ -437,6 +456,34 @@ namespace Idun {
 					break;
 			}
 			return value;
+		}
+	}
+
+	/**
+	 * Persists the device push token the courier is assigned, so that reconnecting
+	 * presents the same token and Idun stays a single stable device in the account
+	 * instead of registering a new one on every run.
+	 */
+	public sealed class ApnsTokenStore : IdentityStore {
+		public Bytes? load () {
+			Plist? plist = read ();
+			if (plist == null)
+				return null;
+			try {
+				return plist.get_bytes ("pushToken");
+			} catch (PlistError e) {
+				return null;
+			}
+		}
+
+		public void save (Bytes token) throws Efni.Error {
+			var plist = new Plist ();
+			plist.set_bytes ("pushToken", token);
+			write (plist);
+		}
+
+		protected override string filename () {
+			return "apns-token.plist";
 		}
 	}
 }

@@ -35,7 +35,7 @@ namespace Idun.Examples {
 			print ("ids identity: profile %s\n", identity.profile_id);
 
 			ApnsIdentity push = yield new ApnsActivation (oracle, new ApnsIdentityStore ()).activate ();
-			var courier = new ApnsCourier (push);
+			var courier = new ApnsCourier (push, new ApnsTokenStore ());
 			yield courier.open ();
 			print ("courier token: %u bytes\n", courier.push_token.length);
 
