@@ -60,7 +60,8 @@ namespace Idun {
 			}
 		}
 
-		public CallInvitation open_invitation (Variant notification, Bytes caller_identity_key) throws Efni.Error {
+		public CallInvitation open_invitation (Variant notification, Gee.Collection<PeerIdentity> senders)
+				throws Efni.Error {
 			Variant? payload = notification.lookup_value ("payload", new VariantType ("a{sv}"));
 			if (payload == null)
 				throw new Efni.Error.PROTOCOL ("FaceTime notification carried no payload");
@@ -71,7 +72,9 @@ namespace Idun {
 			if (sealed == null || sender == null || token == null)
 				throw new Efni.Error.PROTOCOL ("FaceTime invitation is missing routing fields");
 
-			uint8[] invitation = crypto.decrypt (caller_identity_key, sealed.get_data_as_bytes ());
+			Bytes sender_token = token.get_data_as_bytes ();
+			PeerIdentity caller = identity_for_token (senders, sender_token);
+			uint8[] invitation = crypto.decrypt (caller.identity_key, sealed.get_data_as_bytes ());
 
 			string group_id;
 			try {
@@ -80,8 +83,16 @@ namespace Idun {
 				throw new Efni.Error.PROTOCOL ("Malformed FaceTime invitation: %s", e.message);
 			}
 
-			return new CallInvitation (group_id, sender.get_string (), token.get_data_as_bytes (),
-				caller_identity_key);
+			return new CallInvitation (group_id, sender.get_string (), sender_token, caller.identity_key);
+		}
+
+		private static PeerIdentity identity_for_token (Gee.Collection<PeerIdentity> senders, Bytes token)
+				throws Efni.Error {
+			foreach (PeerIdentity sender in senders) {
+				if (sender.push_token.compare (token) == 0)
+					return sender;
+			}
+			throw new Efni.Error.PROTOCOL ("No registered identity matched the FaceTime invitation sender");
 		}
 
 		public async void decline (CallInvitation call, Cancellable? cancellable = null)

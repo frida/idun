@@ -70,13 +70,13 @@ namespace Idun.Examples {
 			if (caller == null)
 				return;
 
-			Gee.Map<string, PeerIdentity> peers = yield lookup.query (identity, registration.certificate,
+			Gee.MultiMap<string, PeerIdentity> peers = yield lookup.query (identity, registration.certificate,
 				courier.push_token, endpoint.handle, { caller.get_string () });
-			PeerIdentity? peer = peers[caller.get_string ()];
-			if (peer == null)
+			Gee.Collection<PeerIdentity> senders = peers[caller.get_string ()];
+			if (senders.is_empty)
 				return;
 
-			CallInvitation invitation = endpoint.open_invitation (notification, peer.identity_key);
+			CallInvitation invitation = endpoint.open_invitation (notification, senders);
 			yield endpoint.decline (invitation);
 			print ("declined call %s from %s\n", invitation.group_id, invitation.caller_uri);
 		} catch (GLib.Error e) {

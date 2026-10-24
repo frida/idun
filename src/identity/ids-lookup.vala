@@ -37,7 +37,7 @@ namespace Idun {
 			trust.guard (session);
 		}
 
-		public async Gee.Map<string, PeerIdentity> query (IdsIdentity identity, Bytes registration_certificate,
+		public async Gee.MultiMap<string, PeerIdentity> query (IdsIdentity identity, Bytes registration_certificate,
 				Bytes push_token, string self_handle, string[] handles, Cancellable? cancellable = null)
 				throws Efni.Error, IOError {
 			Gee.Map<string, string> anisette = yield oracle.fetch_anisette (cancellable);
@@ -145,8 +145,8 @@ namespace Idun {
 			return signature;
 		}
 
-		private static Gee.Map<string, PeerIdentity> parse_results (Bytes response) throws Efni.Error {
-			var peers = new Gee.HashMap<string, PeerIdentity> ();
+		private static Gee.MultiMap<string, PeerIdentity> parse_results (Bytes response) throws Efni.Error {
+			var peers = new Gee.HashMultiMap<string, PeerIdentity> ();
 			try {
 				var plist = new Plist.from_data (response.get_data ());
 				int64 status = plist.get_integer ("status");
@@ -165,9 +165,8 @@ namespace Idun {
 						PlistDict client_data = identity.get_dict ("client-data");
 						if (!client_data.has ("public-message-identity-key"))
 							continue;
-						peers[uri] = new PeerIdentity (uri, identity.get_bytes ("push-token"),
-							client_data.get_bytes ("public-message-identity-key"));
-						break;
+						peers.set (uri, new PeerIdentity (uri, identity.get_bytes ("push-token"),
+							client_data.get_bytes ("public-message-identity-key")));
 					}
 				}
 			} catch (PlistError e) {
