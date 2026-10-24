@@ -226,6 +226,59 @@ namespace Idun {
 			return (length + mask) & ~mask;
 		}
 
+		private const uint8[] EC_P256_SPKI_PREFIX = {
+			0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01,
+			0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07, 0x03, 0x42, 0x00,
+		};
+
+		public static uint8[] public_key_point (Bytes private_key_pem) throws Efni.Error {
+			var sink = new OpenSSL.BasicIO (OpenSSL.BasicIOMethod.memory ());
+			load_private_key (private_key_pem).to_der (sink);
+			unowned uint8[] der;
+			long size = sink.get_mem_data (out der);
+			return der[size - 65 : size];
+		}
+
+		/**
+		 * The classical half of the pair-tetra key exchange: the raw P-256 ECDH shared
+		 * secret between our key and the peer's, as the ratchet mixes it in.
+		 */
+		public static uint8[] ecdh (Bytes our_private_key_pem, uint8[] peer_public_point)
+				throws Efni.Error {
+			var ctx = new KeyContext.for_key (load_private_key (our_private_key_pem));
+			ctx.derive_init ();
+			ctx.derive_set_peer (load_public_point (peer_public_point));
+
+			size_t length = 0;
+			ctx.derive (null, ref length);
+			var secret = new uint8[length];
+			ctx.derive (secret, ref length);
+			secret.length = (int) length;
+			return secret;
+		}
+
+		public static uint8[] kyber_encapsulate (uint8[] peer_public_key, out uint8[] encapsulation) {
+			encapsulation = new uint8[Kyber.CIPHERTEXT_BYTES];
+			var secret = new uint8[Kyber.SHARED_SECRET_BYTES];
+			Kyber.enc (encapsulation, secret, peer_public_key);
+			return secret;
+		}
+
+		public static uint8[] kyber_decapsulate (uint8[] our_secret_key, uint8[] encapsulation) {
+			var secret = new uint8[Kyber.SHARED_SECRET_BYTES];
+			Kyber.dec (secret, encapsulation, our_secret_key);
+			return secret;
+		}
+
+		private static Key load_public_point (uint8[] point) {
+			var spki = new ByteArray ();
+			spki.append (EC_P256_SPKI_PREFIX);
+			spki.append (point);
+
+			var source = new OpenSSL.BasicIO.from_static_memory_buffer (spki.data);
+			return new Key.from_der (source);
+		}
+
 		public static uint8[] i2osp (uint64 value, int length) {
 			var octets = new uint8[length];
 			for (int i = length - 1; i >= 0; i--) {

@@ -12,6 +12,7 @@ namespace Idun.TetraCryptoTest {
 		GLib.Test.add_func ("/TetraCrypto/derives-message-key-indicator", derives_message_key_indicator);
 		GLib.Test.add_func ("/TetraCrypto/padme-snaps-to-bucket", padme_snaps_to_bucket);
 		GLib.Test.add_func ("/TetraCrypto/seals-and-opens-a-message", seals_and_opens_a_message);
+		GLib.Test.add_func ("/TetraCrypto/parties-agree-on-root-key", parties_agree_on_root_key);
 	}
 
 	private void ecdsa_signs_and_verifies () {
@@ -24,6 +25,40 @@ namespace Idun.TetraCryptoTest {
 		assert_true (TetraCrypto.verify (key, data, signature));
 		assert_false (TetraCrypto.verify (key, { 1, 2, 3, 4, 6 }, signature));
 	}
+
+	private void parties_agree_on_root_key () {
+		var alice = new Bytes (TEST_P256_KEY.data);
+		var bob = new Bytes (TEST_P256_KEY_2.data);
+		uint8[] alice_point = TetraCrypto.public_key_point (alice);
+		uint8[] bob_point = TetraCrypto.public_key_point (bob);
+
+		uint8[] ecdh_alice = TetraCrypto.ecdh (alice, bob_point);
+		uint8[] ecdh_bob = TetraCrypto.ecdh (bob, alice_point);
+		assert_true (new Bytes (ecdh_alice).compare (new Bytes (ecdh_bob)) == 0);
+
+		var kyber_public = new uint8[Kyber.PUBLIC_KEY_BYTES];
+		var kyber_secret = new uint8[Kyber.SECRET_KEY_BYTES];
+		Kyber.keypair (kyber_public, kyber_secret);
+		uint8[] encapsulation;
+		uint8[] kem_sender = TetraCrypto.kyber_encapsulate (kyber_public, out encapsulation);
+		uint8[] kem_receiver = TetraCrypto.kyber_decapsulate (kyber_secret, encapsulation);
+		assert_true (new Bytes (kem_sender).compare (new Bytes (kem_receiver)) == 0);
+
+		uint8[] root_a, chain_a, root_b, chain_b;
+		TetraCrypto.derive_root_and_chain (new uint8[32], ecdh_alice, kem_sender, "TetraRatchet-".data,
+			out root_a, out chain_a);
+		TetraCrypto.derive_root_and_chain (new uint8[32], ecdh_bob, kem_receiver, "TetraRatchet-".data,
+			out root_b, out chain_b);
+		assert_true (new Bytes (root_a).compare (new Bytes (root_b)) == 0);
+		assert_true (new Bytes (chain_a).compare (new Bytes (chain_b)) == 0);
+	}
+
+	private const string TEST_P256_KEY_2 =
+		"-----BEGIN PRIVATE KEY-----\n" +
+		"MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgJM5wNkcUlYyYkgFH\n" +
+		"BgeVoBahAZscxCXtR7YR07Y9A+2hRANCAASFPSGoadpU9P78QE6RpbS4/h4UkO8O\n" +
+		"IyY+8ENY2FNLPujmOgH82ZhDPZoTLTpowa6IgZI8o0BbpPJAvx4LaUsa\n" +
+		"-----END PRIVATE KEY-----\n";
 
 	private void seals_and_opens_a_message () {
 		var signing_key = new Bytes (TEST_P256_KEY.data);
