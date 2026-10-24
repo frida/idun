@@ -58,6 +58,7 @@ if host_os != 'macos'
     'identity' / 'ids-delegate.vala',
     'identity' / 'ids-auth-cert.vala',
     'identity' / 'message-identity.vala',
+    'identity' / 'ngm-identity.vala',
     'identity' / 'ids-registration.vala',
     'identity' / 'ids-lookup.vala',
     'identity' / 'pair-crypto.vala',

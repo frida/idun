@@ -2,3 +2,4 @@
 /deps/
 /research/
 /subprojects/*
+!/subprojects/kyber/

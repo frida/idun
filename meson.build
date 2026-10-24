@@ -115,6 +115,9 @@ if host_os != 'macos'
   platform_reqs += 'libusb-1.0'
   platform_vala_args += '--pkg=libusb-1.0'
 
+  platform_deps += dependency('kyber', fallback: ['kyber', 'kyber_dep'])
+  platform_vala_args += '--pkg=kyber'
+
   lwip_options = [
     'default_library=static',
     'ipv4=disabled',
