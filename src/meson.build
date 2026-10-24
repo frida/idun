@@ -75,6 +75,7 @@ if host_os != 'macos'
     'identity' / 'apple-root-ca.vala',
     'media' / 'ice-agent.vala',
     'media' / 'rtp-media-session.vala',
+    'media' / 'media-connection.vala',
   ]
 endif
 
