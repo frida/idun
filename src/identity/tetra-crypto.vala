@@ -145,6 +145,28 @@ namespace Idun {
 			return new Key.from_private_key_pem (source);
 		}
 
+		/**
+		 * The Padmé bucket a padded message rounds up to: it hides the exact plaintext
+		 * length by snapping to a size whose low bits are zero, leaking only a bounded
+		 * fraction of the true length.
+		 */
+		public static uint padme (uint length) {
+			if (length < 2)
+				return length;
+
+			int e = 0;
+			for (uint t = length; t > 1; t >>= 1)
+				e++;
+
+			int s = 0;
+			for (uint t = e; t > 0; t >>= 1)
+				s++;
+
+			int last_bits = e - s;
+			uint mask = (last_bits > 0) ? ((1u << last_bits) - 1) : 0;
+			return (length + mask) & ~mask;
+		}
+
 		public static uint8[] i2osp (uint64 value, int length) {
 			var octets = new uint8[length];
 			for (int i = length - 1; i >= 0; i--) {

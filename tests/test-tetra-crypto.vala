@@ -10,6 +10,7 @@ namespace Idun.TetraCryptoTest {
 		GLib.Test.add_func ("/TetraCrypto/ecdsa-signs-and-verifies", ecdsa_signs_and_verifies);
 		GLib.Test.add_func ("/TetraCrypto/builds-signature-transcript", builds_signature_transcript);
 		GLib.Test.add_func ("/TetraCrypto/derives-message-key-indicator", derives_message_key_indicator);
+		GLib.Test.add_func ("/TetraCrypto/padme-snaps-to-bucket", padme_snaps_to_bucket);
 	}
 
 	private void ecdsa_signs_and_verifies () {
@@ -21,6 +22,13 @@ namespace Idun.TetraCryptoTest {
 		assert_true (signature.length == 64);
 		assert_true (TetraCrypto.verify (key, data, signature));
 		assert_false (TetraCrypto.verify (key, { 1, 2, 3, 4, 6 }, signature));
+	}
+
+	private void padme_snaps_to_bucket () {
+		assert_true (TetraCrypto.padme (100) == 104);
+		assert_true (TetraCrypto.padme (1000) == 1024);
+		assert_true (TetraCrypto.padme (256) == 256);
+		assert_true (TetraCrypto.padme (1) == 1);
 	}
 
 	private void derives_message_key_indicator () {
