@@ -17,6 +17,9 @@ namespace Idun {
 		private AppleTrust trust = new AppleTrust ();
 
 		private const string REGISTER_KEY = "id-register";
+		private const uint32 NGM_VERSION = 13;
+		private const uint32 KT_VERSION = 5;
+		private const uint32 TETRA_VERSION = 15;
 		private const string SERVICE = "com.apple.private.alloy.facetime.multi";
 		private const string USER_AGENT = "com.apple.invitation-registration [macOS,27.0,26A428,Mac17,2]";
 		private const string PROTOCOL_VERSION = "1640";
@@ -40,13 +43,14 @@ namespace Idun {
 		}
 
 		public async RegisteredService register (IdsIdentity auth, ApnsIdentity push, Bytes push_token,
-				MessageIdentity message, string handle, Cancellable? cancellable = null)
+				MessageIdentity message, string handle, NgmIdentity? ngm = null,
+				Cancellable? cancellable = null)
 				throws Efni.Error, IOError {
 			Gee.Map<string, string> anisette = yield oracle.fetch_anisette (cancellable);
 			ValidationData validation = yield oracle.produce_validation_data (cancellable);
 			IdsBag bag = yield IdsBag.fetch (session, cancellable);
 
-			Bytes body = gzip (build_request (auth.profile_id, handle, message, validation));
+			Bytes body = gzip (build_request (auth.profile_id, handle, message, ngm, validation));
 			uint8[] token = push_token.get_data ();
 
 			var request = new Soup.Message ("POST", bag.lookup (REGISTER_KEY));
@@ -75,7 +79,7 @@ namespace Idun {
 		}
 
 		private static Bytes build_request (string profile_id, string handle, MessageIdentity message,
-				ValidationData validation) {
+				NgmIdentity? ngm, ValidationData validation) throws Efni.Error {
 			var capability = new PlistDict ();
 			capability.set_integer ("flags", 1);
 			capability.set_string ("name", "Invitation");
@@ -89,7 +93,7 @@ namespace Idun {
 			uris.add_dict (uri);
 
 			var user = new PlistDict ();
-			user.set_dict ("client-data", build_client_data (message));
+			user.set_dict ("client-data", build_client_data (message, ngm));
 			user.set_array ("uris", uris);
 			user.set_string ("user-id", profile_id);
 			var users = new PlistArray ();
@@ -114,7 +118,8 @@ namespace Idun {
 			return new Bytes (request.to_xml ().data);
 		}
 
-		private static PlistDict build_client_data (MessageIdentity message) {
+		private static PlistDict build_client_data (MessageIdentity message, NgmIdentity? ngm)
+				throws Efni.Error {
 			var data = new PlistDict ();
 			data.set_bytes ("public-message-identity-key", message.public_key);
 			data.set_integer ("public-message-identity-version", 2);
@@ -138,6 +143,16 @@ namespace Idun {
 			data.set_boolean ("supports-qta", true);
 			data.set_boolean ("supports-ssrc", true);
 			data.set_boolean ("supports-uriless-membership-updates", true);
+
+			if (ngm != null) {
+				double timestamp = (double) get_real_time () / 1000000.0;
+				data.set_bytes ("public-message-ngm-device-prekey-data-key",
+					new Bytes (ngm.device_prekey_data (timestamp, TETRA_VERSION)));
+				data.set_integer ("public-message-identity-ngm-version", NGM_VERSION);
+				data.set_bytes ("kt-loggable-data",
+					new Bytes (ngm.kt_loggable_data (NGM_VERSION, KT_VERSION)));
+			}
+
 			return data;
 		}
 

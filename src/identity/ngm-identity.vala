@@ -61,6 +61,18 @@ namespace Idun {
 				.data;
 		}
 
+		public uint8[] kt_loggable_data (uint32 ngm_version, uint32 kt_version) {
+			uint8[] identity = new ProtobufWriter ()
+				.append_bytes (1, signing_compact_key ())
+				.data;
+
+			return new ProtobufWriter ()
+				.append_bytes (1, identity)
+				.append_varint (2, ngm_version)
+				.append_varint (3, kt_version)
+				.data;
+		}
+
 		public uint8[] device_prekey_data (double timestamp, uint32 tetra_version) throws Efni.Error {
 			uint8[] tetra = new ProtobufWriter ()
 				.append_bytes (1, kem_public_key ())

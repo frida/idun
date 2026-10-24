@@ -3,6 +3,7 @@ using Efni;
 namespace Idun.NgmPeerPrekeyTest {
 	public void add_tests () {
 		GLib.Test.add_func ("/NgmPeerPrekey/parses-a-published-prekey", parses_a_published_prekey);
+		GLib.Test.add_func ("/NgmPeerPrekey/round-trips-our-own-identity", round_trips_our_own_identity);
 	}
 
 	private void parses_a_published_prekey () {
@@ -14,6 +15,23 @@ namespace Idun.NgmPeerPrekeyTest {
 		assert_true (prekey.kyber_public.length == 1568);
 		assert_true (new Bytes (prekey.signing_point.get_data ()).compare (new Bytes (decode_hex (
 			"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"))) == 0);
+	}
+
+	private void round_trips_our_own_identity () {
+		try {
+			var identity = NgmIdentity.generate ();
+			var prekey = NgmPeerPrekey.parse (new Bytes (identity.device_prekey_data (1792659144.3, 15)),
+				new Bytes (identity.kt_loggable_data (13, 5)));
+
+			assert_true (new Bytes (prekey.ecdh_point.get_data ()).compare (
+				new Bytes (identity.prekey_compact_key ())) == 0);
+			assert_true (new Bytes (prekey.kyber_public.get_data ()).compare (
+				new Bytes (identity.kem_public_key ())) == 0);
+			assert_true (new Bytes (prekey.signing_point.get_data ()).compare (
+				new Bytes (identity.signing_compact_key ())) == 0);
+		} catch (Efni.Error e) {
+			assert_not_reached ();
+		}
 	}
 
 	private const string KT_LOGGABLE =
