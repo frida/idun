@@ -62,6 +62,7 @@ if host_os != 'macos'
     'identity' / 'ngm-identity.vala',
     'identity' / 'tetra-message.vala',
     'identity' / 'tetra-inner-message.vala',
+    'identity' / 'tetra-binding.vala',
     'identity' / 'tetra-crypto.vala',
     'identity' / 'tetra-ratchet.vala',
     'identity' / 'tetra-session.vala',

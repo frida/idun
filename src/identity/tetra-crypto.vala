@@ -239,6 +239,33 @@ namespace Idun {
 		 * ciphertext each length-framed big endian, and the authenticated data the
 		 * messaging layer binds the message to (its handles, tokens and ratchet keys).
 		 */
+		/**
+		 * Build the authenticated data the messaging layer binds a message to: the service
+		 * topic, the message's key indicator and ephemeral key, and for each party a
+		 * routing binding of its handle, push token and device signing key. The signature
+		 * covers it, so a peer cannot be redirected or impersonated.
+		 */
+		public static uint8[] build_authenticated_data (uint8[] topic, uint8[] message_key_indicator,
+				uint8[] ecdh_public_key, TetraBinding[] bindings) {
+			var data = new ByteArray ();
+			data.append (i2osp (topic.length, 4));
+			data.append (topic);
+			data.append (message_key_indicator);
+			data.append (ecdh_public_key);
+			data.append ({ 0x01, 0x00, 0x00, 0x00 });
+
+			foreach (var binding in bindings) {
+				data.append (i2osp (binding.handle.length, 4));
+				data.append (binding.handle.get_data ());
+				data.append (i2osp (binding.push_token.length, 4));
+				data.append (binding.push_token.get_data ());
+				data.append (binding.device_key.get_data ());
+			}
+
+			data.append (new uint8[10]);
+			return data.data;
+		}
+
 		public static uint8[] build_signature_transcript (bool ratchet, uint32 version,
 				uint8[] ciphertext, uint8[] authenticated_data) {
 			var transcript = new ByteArray ();

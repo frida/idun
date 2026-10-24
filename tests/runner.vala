@@ -17,6 +17,7 @@ namespace Idun.Test {
 		Idun.TetraCryptoTest.add_tests ();
 		Idun.TetraRatchetTest.add_tests ();
 		Idun.TetraSessionTest.add_tests ();
+		Idun.TetraAuthDataTest.add_tests ();
 #endif
 #if HAVE_DAEMON
 		Idun.DaemonTest.add_tests ();
