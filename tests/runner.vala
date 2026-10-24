@@ -5,6 +5,9 @@ namespace Idun.Test {
 		string runtime_dir = isolate_daemon ();
 #endif
 		GLib.Test.init (ref args);
+#if !MACOS
+		Gst.init (ref args);
+#endif
 
 		Idun.PlistTest.add_tests ();
 		Idun.OpackTest.add_tests ();
@@ -16,6 +19,7 @@ namespace Idun.Test {
 		Idun.NgmPeerPrekeyTest.add_tests ();
 		Idun.TetraMessageTest.add_tests ();
 		Idun.IceAgentTest.add_tests ();
+		Idun.RtpMediaSessionTest.add_tests ();
 		Idun.TetraCryptoTest.add_tests ();
 		Idun.TetraRatchetTest.add_tests ();
 		Idun.TetraSessionTest.add_tests ();

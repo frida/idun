@@ -119,6 +119,14 @@ if host_os != 'macos'
   platform_reqs += 'nice'
   platform_vala_args += '--pkg=nice'
 
+  platform_deps += dependency('gstreamer-1.0')
+  platform_reqs += 'gstreamer-1.0'
+  platform_vala_args += '--pkg=gstreamer-1.0'
+
+  platform_deps += dependency('gstreamer-app-1.0')
+  platform_reqs += 'gstreamer-app-1.0'
+  platform_vala_args += '--pkg=gstreamer-app-1.0'
+
   platform_deps += dependency('kyber', fallback: ['kyber', 'kyber_dep'])
   platform_vala_args += '--pkg=kyber'
 
