@@ -22,6 +22,7 @@ namespace Idun {
 			0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07, 0x03, 0x42, 0x00,
 		};
 
+
 		public PairCrypto (MessageIdentity identity) {
 			Object (identity: identity);
 		}
@@ -50,7 +51,29 @@ namespace Idun {
 			return assemble (body.data, signature);
 		}
 
-		public uint8[] decrypt (Bytes peer_public_key, Bytes payload) throws Efni.Error {
+		public uint8[] decrypt (Bytes payload) throws Efni.Error {
+			uint8[] raw = payload.get_data ();
+			if (raw.length < 4 || raw[0] != 0x02)
+				throw new Efni.Error.PROTOCOL ("Unexpected pair-encrypted payload");
+
+			int body_length = (raw[1] << 8) | raw[2];
+			int signature_offset = 3 + body_length;
+			if (signature_offset >= raw.length)
+				throw new Efni.Error.PROTOCOL ("Truncated pair-encrypted payload");
+
+			uint8[] body = raw[3:signature_offset];
+
+			OpenSSL.Envelope.Key own = load_private_key (identity.encryption_key);
+			int modulus = own.size ();
+			uint8[] opened = rsa_oaep_decrypt (own, body[0:modulus]);
+
+			var cipher = new ByteArray ();
+			cipher.append (opened[AES_KEY_LENGTH:opened.length]);
+			cipher.append (body[modulus:body.length]);
+			return aes_ctr (opened[0:AES_KEY_LENGTH], cipher.data);
+		}
+
+		public bool verify (Bytes peer_public_key, Bytes payload) throws Efni.Error {
 			uint8[] raw = payload.get_data ();
 			if (raw.length < 4 || raw[0] != 0x02)
 				throw new Efni.Error.PROTOCOL ("Unexpected pair-encrypted payload");
@@ -68,17 +91,7 @@ namespace Idun {
 
 			uint8[] ec_point, rsa_public;
 			parse_public_key (peer_public_key, out ec_point, out rsa_public);
-			if (!ecdsa_sha1_verify (load_ec_public_key (ec_point), body, signature))
-				throw new Efni.Error.PROTOCOL ("Pair-encrypted payload failed signature verification");
-
-			OpenSSL.Envelope.Key own = load_private_key (identity.encryption_key);
-			int modulus = own.size ();
-			uint8[] opened = rsa_oaep_decrypt (own, body[0:modulus]);
-
-			var cipher = new ByteArray ();
-			cipher.append (opened[AES_KEY_LENGTH:opened.length]);
-			cipher.append (body[modulus:body.length]);
-			return aes_ctr (opened[0:AES_KEY_LENGTH], cipher.data);
+			return ecdsa_sha1_verify (load_ec_public_key (ec_point), body, signature);
 		}
 
 		private static Bytes assemble (uint8[] body, uint8[] signature) {
@@ -194,6 +207,15 @@ namespace Idun {
 			return ctx.digest_verify (signature, data) == 1;
 		}
 
+		private static OpenSSL.Envelope.Key load_ec_public_key (uint8[] point) {
+			var spki = new ByteArray ();
+			spki.append (EC_P256_SPKI_PREFIX);
+			spki.append (point);
+
+			var source = new OpenSSL.BasicIO.from_static_memory_buffer (spki.data);
+			return new OpenSSL.Envelope.Key.from_der (source);
+		}
+
 		private static OpenSSL.Envelope.Key load_private_key (Bytes pem) {
 			var source = new OpenSSL.BasicIO.from_static_memory_buffer (pem.get_data ());
 			return new OpenSSL.Envelope.Key.from_private_key_pem (source);
@@ -203,15 +225,6 @@ namespace Idun {
 			uint8* cursor = der;
 			return new OpenSSL.Envelope.Key.from_legacy_public_der (OpenSSL.Envelope.KeyType.RSA, null, &cursor,
 				der.length);
-		}
-
-		private static OpenSSL.Envelope.Key load_ec_public_key (uint8[] point) {
-			var spki = new ByteArray ();
-			spki.append (EC_P256_SPKI_PREFIX);
-			spki.append (point);
-
-			var source = new OpenSSL.BasicIO.from_static_memory_buffer (spki.data);
-			return new OpenSSL.Envelope.Key.from_der (source);
 		}
 	}
 }

@@ -74,7 +74,7 @@ namespace Idun {
 
 			Bytes sender_token = token.get_data_as_bytes ();
 			PeerIdentity caller = identity_for_token (senders, sender_token);
-			uint8[] invitation = crypto.decrypt (caller.identity_key, sealed.get_data_as_bytes ());
+			uint8[] invitation = crypto.decrypt (sealed.get_data_as_bytes ());
 
 			string group_id;
 			try {
