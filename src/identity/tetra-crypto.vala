@@ -450,6 +450,16 @@ namespace Idun {
 					{ null, INTEGER, null, return_size },
 				};
 				result = ctx.derive (output, params);
+			} else if (salt.length == 0) {
+				// An absent salt extracts with the default all-zero key, matching an
+				// empty-salt extract; a zero-length salt param instead fails in OpenSSL.
+				Param params[] = {
+					{ KeyDerivationParameter.DIGEST, UTF8_STRING, digest.data, return_size },
+					{ KeyDerivationParameter.KEY, OCTET_STRING, key, return_size },
+					{ KeyDerivationParameter.INFO, OCTET_STRING, info, return_size },
+					{ null, INTEGER, null, return_size },
+				};
+				result = ctx.derive (output, params);
 			} else {
 				Param params[] = {
 					{ KeyDerivationParameter.DIGEST, UTF8_STRING, digest.data, return_size },

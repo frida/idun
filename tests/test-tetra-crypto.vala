@@ -56,9 +56,9 @@ namespace Idun.TetraCryptoTest {
 		assert_true (new Bytes (kem_sender).compare (new Bytes (kem_receiver)) == 0);
 
 		uint8[] root_a, chain_a, root_b, chain_b;
-		TetraCrypto.derive_root_and_chain (new uint8[32], ecdh_alice, kem_sender, "TetraRatchet-".data,
+		TetraCrypto.derive_root_and_chain (new uint8[0], ecdh_alice, kem_sender, "TetraRatchet-".data,
 			out root_a, out chain_a);
-		TetraCrypto.derive_root_and_chain (new uint8[32], ecdh_bob, kem_receiver, "TetraRatchet-".data,
+		TetraCrypto.derive_root_and_chain (new uint8[0], ecdh_bob, kem_receiver, "TetraRatchet-".data,
 			out root_b, out chain_b);
 		assert_true (new Bytes (root_a).compare (new Bytes (root_b)) == 0);
 		assert_true (new Bytes (chain_a).compare (new Bytes (chain_b)) == 0);

@@ -34,7 +34,7 @@ namespace Idun {
 			session.encapsulation_to_send = new Bytes (encapsulation);
 
 			uint8[] root, chain;
-			TetraCrypto.derive_root_and_chain (new uint8[32], ecdh_secret, kem_secret, RATCHET_DST.data,
+			TetraCrypto.derive_root_and_chain (new uint8[0], ecdh_secret, kem_secret, RATCHET_DST.data,
 				out root, out chain);
 			session.sending = new TetraSymmetricRatchet (chain);
 			return session;
@@ -50,7 +50,7 @@ namespace Idun {
 			uint8[] kem_secret = TetraCrypto.kyber_decapsulate (our_kyber_secret, encapsulation);
 
 			uint8[] root, chain;
-			TetraCrypto.derive_root_and_chain (new uint8[32], ecdh_secret, kem_secret, RATCHET_DST.data,
+			TetraCrypto.derive_root_and_chain (new uint8[0], ecdh_secret, kem_secret, RATCHET_DST.data,
 				out root, out chain);
 			session.receiving = new TetraSymmetricRatchet (chain);
 			return session;
