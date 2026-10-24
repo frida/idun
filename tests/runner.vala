@@ -12,6 +12,7 @@ namespace Idun.Test {
 		Idun.PairCryptoTest.add_tests ();
 		Idun.CourierPackedTest.add_tests ();
 		Idun.MessageIdentityTest.add_tests ();
+		Idun.NgmIdentityTest.add_tests ();
 #endif
 #if HAVE_DAEMON
 		Idun.DaemonTest.add_tests ();
