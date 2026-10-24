@@ -26,9 +26,9 @@ namespace Idun {
 			var session = new TetraSession (signing_key);
 
 			Bytes ephemeral = TetraCrypto.generate_key_agreement_key ();
-			session.sending_key_point = TetraCrypto.public_key_point (ephemeral);
+			session.sending_key_point = TetraCrypto.compact_point (TetraCrypto.public_key_point (ephemeral));
 
-			uint8[] ecdh_secret = TetraCrypto.ecdh (ephemeral, peer_ecdh_point);
+			uint8[] ecdh_secret = TetraCrypto.ecdh (ephemeral, TetraCrypto.decompress_point (peer_ecdh_point));
 			uint8[] encapsulation;
 			uint8[] kem_secret = TetraCrypto.kyber_encapsulate (peer_kyber_public, out encapsulation);
 			session.encapsulation_to_send = new Bytes (encapsulation);
@@ -45,7 +45,8 @@ namespace Idun {
 				throws Efni.Error {
 			var session = new TetraSession (signing_key);
 
-			uint8[] ecdh_secret = TetraCrypto.ecdh (our_ecdh_key, sender_key_point);
+			uint8[] ecdh_secret = TetraCrypto.ecdh (our_ecdh_key,
+				TetraCrypto.decompress_point (sender_key_point));
 			uint8[] kem_secret = TetraCrypto.kyber_decapsulate (our_kyber_secret, encapsulation);
 
 			uint8[] root, chain;

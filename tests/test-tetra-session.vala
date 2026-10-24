@@ -9,7 +9,7 @@ namespace Idun.TetraSessionTest {
 		var alice_signing = new Bytes (ALICE_KEY.data);
 
 		Bytes bob_prekey = TetraCrypto.generate_key_agreement_key ();
-		uint8[] bob_prekey_point = TetraCrypto.public_key_point (bob_prekey);
+		uint8[] bob_prekey_point = TetraCrypto.compact_point (TetraCrypto.public_key_point (bob_prekey));
 		var bob_kyber_public = new uint8[Kyber.PUBLIC_KEY_BYTES];
 		var bob_kyber_secret = new uint8[Kyber.SECRET_KEY_BYTES];
 		Kyber.keypair (bob_kyber_public, bob_kyber_secret);

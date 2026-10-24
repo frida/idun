@@ -13,6 +13,7 @@ namespace Idun.TetraCryptoTest {
 		GLib.Test.add_func ("/TetraCrypto/padme-snaps-to-bucket", padme_snaps_to_bucket);
 		GLib.Test.add_func ("/TetraCrypto/seals-and-opens-a-message", seals_and_opens_a_message);
 		GLib.Test.add_func ("/TetraCrypto/parties-agree-on-root-key", parties_agree_on_root_key);
+		GLib.Test.add_func ("/TetraCrypto/decompresses-a-compact-point", decompresses_a_compact_point);
 	}
 
 	private void ecdsa_signs_and_verifies () {
@@ -24,6 +25,16 @@ namespace Idun.TetraCryptoTest {
 		assert_true (signature.length == 64);
 		assert_true (TetraCrypto.verify (key, data, signature));
 		assert_false (TetraCrypto.verify (key, { 1, 2, 3, 4, 6 }, signature));
+	}
+
+	private void decompresses_a_compact_point () {
+		Bytes key = TetraCrypto.generate_key_agreement_key ();
+		uint8[] point = TetraCrypto.public_key_point (key);
+		uint8[] compact = TetraCrypto.compact_point (point);
+
+		assert_true (compact.length == 32);
+		uint8[] recovered = TetraCrypto.decompress_point (compact);
+		assert_true (new Bytes (recovered).compare (new Bytes (point)) == 0);
 	}
 
 	private void parties_agree_on_root_key () {

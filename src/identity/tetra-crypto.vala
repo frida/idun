@@ -127,14 +127,76 @@ namespace Idun {
 			return message.serialize ();
 		}
 
-		public static Bytes generate_key_agreement_key () {
-			var key = new Key.generate_ec ("P-256");
-			var sink = new OpenSSL.BasicIO (OpenSSL.BasicIOMethod.memory ());
-			OpenSSL.Envelope.write_private_key_pem (sink, key);
-			unowned uint8[] pem;
-			long size = sink.get_mem_data (out pem);
-			pem.length = (int) size;
-			return new Bytes (pem);
+		/**
+		 * Generate a key-agreement key whose public point is compact-representable, so
+		 * the 32-byte x the wire carries recovers the one point. We keep generating until
+		 * the y is the smaller of the two the x admits.
+		 */
+		public static Bytes generate_key_agreement_key () throws Efni.Error {
+			while (true) {
+				var key = new Key.generate_ec ("P-256");
+				var sink = new OpenSSL.BasicIO (OpenSSL.BasicIOMethod.memory ());
+				OpenSSL.Envelope.write_private_key_pem (sink, key);
+				unowned uint8[] pem;
+				long size = sink.get_mem_data (out pem);
+				pem.length = (int) size;
+				var candidate = new Bytes (pem);
+
+				uint8[] point = public_key_point (candidate);
+				if (compare_big_endian (decompress_point (compact_point (point)), point) == 0)
+					return candidate;
+			}
+		}
+
+		public static uint8[] compact_point (uint8[] point) {
+			return point[1 : 33];
+		}
+
+		/**
+		 * Recover the full P-256 point from its compact x: solve the curve equation for y
+		 * (the field prime is 3 mod 4, so the square root is a modular exponentiation) and
+		 * take the smaller of y and its complement, as the compact form implies.
+		 */
+		public static uint8[] decompress_point (uint8[] x) throws Efni.Error {
+			var ctx = new OpenSSL.BigNumberContext.secure ();
+			var p = new OpenSSL.BigNumber.from_big_endian (P256_PRIME);
+			var three = new OpenSSL.BigNumber.from_big_endian ({ 0x03 });
+			var x_value = new OpenSSL.BigNumber.from_big_endian (x);
+
+			var y_squared = new OpenSSL.BigNumber ();
+			OpenSSL.BigNumber.mod_exp (y_squared, x_value, three, p, ctx);
+			var three_x = new OpenSSL.BigNumber ();
+			OpenSSL.BigNumber.mul (three_x, three, x_value, ctx);
+			OpenSSL.BigNumber.sub (y_squared, y_squared, three_x);
+			OpenSSL.BigNumber.add (y_squared, y_squared, new OpenSSL.BigNumber.from_big_endian (P256_B));
+			OpenSSL.BigNumber.mod_nonneg (y_squared, y_squared, p, ctx);
+
+			var y = new OpenSSL.BigNumber ();
+			OpenSSL.BigNumber.mod_exp (y, y_squared,
+				new OpenSSL.BigNumber.from_big_endian (P256_SQRT_EXPONENT), p, ctx);
+			var complement = new OpenSSL.BigNumber ();
+			OpenSSL.BigNumber.sub (complement, p, y);
+
+			var y_bytes = new uint8[32];
+			y.to_big_endian_padded (y_bytes);
+			var complement_bytes = new uint8[32];
+			complement.to_big_endian_padded (complement_bytes);
+			if (compare_big_endian (y_bytes, complement_bytes) > 0)
+				y_bytes = complement_bytes;
+
+			var point = new uint8[65];
+			point[0] = 0x04;
+			Memory.copy ((uint8*) point + 1, x, 32);
+			Memory.copy ((uint8*) point + 33, y_bytes, 32);
+			return point;
+		}
+
+		private static int compare_big_endian (uint8[] a, uint8[] b) {
+			for (int i = 0; i != a.length; i++) {
+				if (a[i] != b[i])
+					return (a[i] < b[i]) ? -1 : 1;
+			}
+			return 0;
 		}
 
 		public static uint8[] open_message (uint8[] message_key, Bytes sender_signing_key,
@@ -235,6 +297,27 @@ namespace Idun {
 			uint mask = (last_bits > 0) ? ((1u << last_bits) - 1) : 0;
 			return (length + mask) & ~mask;
 		}
+
+		private const uint8[] P256_PRIME = {
+			0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x01,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff,
+			0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+		};
+
+		private const uint8[] P256_B = {
+			0x5a, 0xc6, 0x35, 0xd8, 0xaa, 0x3a, 0x93, 0xe7,
+			0xb3, 0xeb, 0xbd, 0x55, 0x76, 0x98, 0x86, 0xbc,
+			0x65, 0x1d, 0x06, 0xb0, 0xcc, 0x53, 0xb0, 0xf6,
+			0x3b, 0xce, 0x3c, 0x3e, 0x27, 0xd2, 0x60, 0x4b,
+		};
+
+		private const uint8[] P256_SQRT_EXPONENT = {
+			0x3f, 0xff, 0xff, 0xff, 0xc0, 0x00, 0x00, 0x00,
+			0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		};
 
 		private const uint8[] EC_P256_SPKI_PREFIX = {
 			0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01,
