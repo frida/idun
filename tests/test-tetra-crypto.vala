@@ -5,6 +5,24 @@ namespace Idun.TetraCryptoTest {
 		GLib.Test.add_func ("/TetraCrypto/inner-message-round-trips", inner_message_round_trips);
 		GLib.Test.add_func ("/TetraCrypto/aes-256-ctr-matches-nist", aes_256_ctr_matches_nist);
 		GLib.Test.add_func ("/TetraCrypto/hkdf-matches-rfc5869", hkdf_matches_rfc5869);
+		GLib.Test.add_func ("/TetraCrypto/i2osp-is-big-endian", i2osp_is_big_endian);
+		GLib.Test.add_func ("/TetraCrypto/root-ratchet-splits-output", root_ratchet_splits_output);
+	}
+
+	private void i2osp_is_big_endian () {
+		assert_true (new Bytes (TetraCrypto.i2osp (256, 4)).compare (new Bytes (decode_hex ("00000100"))) == 0);
+		assert_true (new Bytes (TetraCrypto.i2osp (15, 4)).compare (new Bytes (decode_hex ("0000000f"))) == 0);
+		assert_true (new Bytes (TetraCrypto.i2osp (32, 2)).compare (new Bytes (decode_hex ("0020"))) == 0);
+	}
+
+	private void root_ratchet_splits_output () {
+		uint8[] root, chain;
+		TetraCrypto.derive_root_and_chain (new uint8[32], new uint8[32], null, "TetraRatchet-".data,
+			out root, out chain);
+
+		assert_true (root.length == 32);
+		assert_true (chain.length == 32);
+		assert_true (new Bytes (root).compare (new Bytes (chain)) != 0);
 	}
 
 	private void inner_message_round_trips () {

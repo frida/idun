@@ -13,9 +13,11 @@ namespace Idun {
 		private const string CHAIN_KEY_INFO = RATCHET_BASE + "ChainKeyDerivation";
 		private const string MESSAGE_KEY_INFO = RATCHET_BASE + "MessageKeyDerivation";
 		private const string SENDER_AUTH_INFO = "Tetra-v1.0-SymmetricLayer-AES-CTR-Keying";
+		private const string ROOT_KEY_INFO = "Tetra-v1.0-RootKeyDerivation-";
 
 		private const int MESSAGE_KEY_LENGTH = 32;
 		private const int CTR_IV_LENGTH = 16;
+		private const int ROOT_AND_CHAIN_LENGTH = 64;
 
 		public static uint8[] aes_256_ctr (uint8[] key, uint8[] iv, uint8[] data) throws Efni.Error {
 			var cipher = Cipher.fetch (null, "AES-256-CTR");
@@ -61,6 +63,42 @@ namespace Idun {
 				CTR_IV_LENGTH + MESSAGE_KEY_LENGTH);
 			iv = keying[0 : CTR_IV_LENGTH];
 			key = keying[CTR_IV_LENGTH : CTR_IV_LENGTH + MESSAGE_KEY_LENGTH];
+		}
+
+		/**
+		 * The Diffie-Hellman ratchet step: the previous root key salts the extraction of
+		 * the mixed shared secrets into a fresh root key and the chain key that seeds the
+		 * symmetric ratchet. A post-quantum step mixes the Kyber secret in after the
+		 * classical one.
+		 */
+		public static void derive_root_and_chain (uint8[] prior_root, uint8[] ecdh_secret,
+				uint8[]? kem_secret, uint8[] conversation_dst, out uint8[] root, out uint8[] chain)
+				throws Efni.Error {
+			var ikm = new ByteArray ();
+			ikm.append (i2osp (ecdh_secret.length, 4));
+			ikm.append (ecdh_secret);
+			if (kem_secret != null) {
+				ikm.append (i2osp (kem_secret.length, 4));
+				ikm.append (kem_secret);
+			}
+
+			var info = new ByteArray ();
+			info.append (ROOT_KEY_INFO.data);
+			info.append (conversation_dst);
+
+			uint8[] derived = hkdf_extract_and_expand (ShortName.sha384, ikm.data, prior_root,
+				info.data, ROOT_AND_CHAIN_LENGTH);
+			root = derived[0 : MESSAGE_KEY_LENGTH];
+			chain = derived[MESSAGE_KEY_LENGTH : ROOT_AND_CHAIN_LENGTH];
+		}
+
+		public static uint8[] i2osp (uint64 value, int length) {
+			var octets = new uint8[length];
+			for (int i = length - 1; i >= 0; i--) {
+				octets[i] = (uint8) value;
+				value >>= 8;
+			}
+			return octets;
 		}
 
 		public static uint8[] advance_chain_key (uint8[] chain_key) throws Efni.Error {
