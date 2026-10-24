@@ -21,9 +21,17 @@ namespace Idun {
 			var fields = new HashTable<string, Variant> (str_hash, str_equal);
 			while (!cursor.at_end ()) {
 				uint8 head = cursor.read_byte ();
-				if (((head >> 4) & 3) != 0)
-					throw new Efni.Error.PROTOCOL ("Unexpected courier field head 0x%02x", head);
-				fields[field_name (head & 0x0f)] = read_value (cursor, head >> 6);
+				uint disp = (head >> 4) & 3;
+				string name;
+				if (disp == 0) {
+					name = field_name (cursor.resume_integer (head, 4));
+				} else if (disp == 1) {
+					name = cursor.read_string (cursor.resume_integer (head, 4) + 1);
+					keys.add (name);
+				} else {
+					name = keys[key_index (cursor.resume_integer (head, 5))];
+				}
+				fields[name] = read_value (cursor, head >> 6);
 			}
 
 			var builder = new VariantBuilder (new VariantType ("a{sv}"));
