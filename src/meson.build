@@ -60,6 +60,7 @@ if host_os != 'macos'
     'identity' / 'ids-auth-cert.vala',
     'identity' / 'message-identity.vala',
     'identity' / 'ngm-identity.vala',
+    'identity' / 'tetra-message.vala',
     'identity' / 'ids-registration.vala',
     'identity' / 'ids-lookup.vala',
     'identity' / 'pair-crypto.vala',

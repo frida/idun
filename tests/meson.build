@@ -19,6 +19,7 @@ if host_os != 'macos'
   test_sources += 'test-courier-packed.vala'
   test_sources += 'test-message-identity.vala'
   test_sources += 'test-ngm-identity.vala'
+  test_sources += 'test-tetra-message.vala'
 endif
 
 test_deps = [glib_dep, gobject_dep, gio_dep, gee_dep, json_glib_dep, efni_dep, idun_dep] + platform_deps
