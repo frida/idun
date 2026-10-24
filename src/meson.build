@@ -73,6 +73,7 @@ if host_os != 'macos'
     'identity' / 'facetime.vala',
     'identity' / 'identity-oracle.vala',
     'identity' / 'apple-root-ca.vala',
+    'media' / 'ice-agent.vala',
   ]
 endif
 
