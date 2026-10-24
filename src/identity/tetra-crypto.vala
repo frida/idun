@@ -23,6 +23,8 @@ namespace Idun {
 		private const int CTR_IV_LENGTH = 16;
 		private const int ROOT_AND_CHAIN_LENGTH = 64;
 		private const int MESSAGE_KEY_INDICATOR_LENGTH = 16;
+		private const uint32 TETRA_VERSION = 15;
+		private const int PADDING_FIELD = 15;
 
 		public static uint8[] aes_256_ctr (uint8[] key, uint8[] iv, uint8[] data) throws Efni.Error {
 			var cipher = Cipher.fetch (null, "AES-256-CTR");
@@ -102,6 +104,63 @@ namespace Idun {
 		 * SHA-256 ECDSA whose DER output is unpacked to the fixed 64-byte r‖s the wire
 		 * format carries.
 		 */
+		/**
+		 * Seal one pair-tetra message under a ratchet message key: encrypt the padded
+		 * inner message with the key's derived cipher keying, and bind the ciphertext to
+		 * the sender with a signature over its transcript. The message index and key
+		 * indicator let the receiver place and open it within the ratchet.
+		 */
+		public static uint8[] seal_message (uint8[] message_key, Bytes signing_key,
+				uint8[] ecdh_public_key, uint64 message_index, uint8[] plaintext,
+				uint8[] authenticated_data) throws Efni.Error {
+			uint8[] iv, cipher_key;
+			derive_sender_authentication (message_key, out iv, out cipher_key);
+
+			uint8[] inner = new TetraInnerMessage (new Bytes (plaintext)).serialize ();
+			uint8[] ciphertext = aes_256_ctr (cipher_key, iv, pad (inner));
+
+			uint8[] transcript = build_signature_transcript (true, TETRA_VERSION, ciphertext,
+				authenticated_data);
+			var message = new TetraMessage (TETRA_VERSION, new Bytes (ciphertext),
+				new Bytes (sign (signing_key, transcript)), new Bytes (ecdh_public_key), message_index,
+				new Bytes (derive_message_key_indicator (message_key)));
+			return message.serialize ();
+		}
+
+		public static uint8[] open_message (uint8[] message_key, Bytes sender_signing_key,
+				uint8[] serialized, uint8[] authenticated_data) throws Efni.Error {
+			var message = TetraMessage.parse (serialized);
+
+			uint8[] transcript = build_signature_transcript (true, message.version,
+				message.ciphertext.get_data (), authenticated_data);
+			if (!verify (sender_signing_key, transcript, message.signature.get_data ()))
+				throw new Efni.Error.PROTOCOL ("Invalid pair-tetra message signature");
+
+			uint8[] iv, cipher_key;
+			derive_sender_authentication (message_key, out iv, out cipher_key);
+			uint8[] padded = aes_256_ctr (cipher_key, iv, message.ciphertext.get_data ());
+			return TetraInnerMessage.parse (padded).plaintext.get_data ();
+		}
+
+		private static uint8[] pad (uint8[] message) {
+			uint target = padme (message.length);
+			if (target < message.length + 2)
+				target = padme (message.length + 2);
+
+			int total = (int) target - message.length;
+			int payload = total - 2;
+			if (payload >= 0x80)
+				payload = total - 3;
+
+			var random = new uint8[payload];
+			OpenSSL.Rng.generate (random);
+
+			var padded = new ByteArray ();
+			padded.append (message);
+			padded.append (new ProtobufWriter ().append_bytes (PADDING_FIELD, random).data);
+			return padded.data;
+		}
+
 		/**
 		 * Assemble the transcript a pair-tetra message signature covers: the domain that
 		 * separates a ratchet message from a reset one, the protocol version and the

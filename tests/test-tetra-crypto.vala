@@ -11,6 +11,7 @@ namespace Idun.TetraCryptoTest {
 		GLib.Test.add_func ("/TetraCrypto/builds-signature-transcript", builds_signature_transcript);
 		GLib.Test.add_func ("/TetraCrypto/derives-message-key-indicator", derives_message_key_indicator);
 		GLib.Test.add_func ("/TetraCrypto/padme-snaps-to-bucket", padme_snaps_to_bucket);
+		GLib.Test.add_func ("/TetraCrypto/seals-and-opens-a-message", seals_and_opens_a_message);
 	}
 
 	private void ecdsa_signs_and_verifies () {
@@ -22,6 +23,28 @@ namespace Idun.TetraCryptoTest {
 		assert_true (signature.length == 64);
 		assert_true (TetraCrypto.verify (key, data, signature));
 		assert_false (TetraCrypto.verify (key, { 1, 2, 3, 4, 6 }, signature));
+	}
+
+	private void seals_and_opens_a_message () {
+		var signing_key = new Bytes (TEST_P256_KEY.data);
+		uint8[] message_key = new uint8[32];
+		for (int i = 0; i != 32; i++)
+			message_key[i] = (uint8) i;
+		uint8[] ecdh = new uint8[32];
+		uint8[] plaintext = "the medium is the message".data;
+		uint8[] authenticated_data = { 0xaa, 0xbb, 0xcc };
+
+		uint8[] sealed = TetraCrypto.seal_message (message_key, signing_key, ecdh, 7, plaintext,
+			authenticated_data);
+		uint8[] opened = TetraCrypto.open_message (message_key, signing_key, sealed, authenticated_data);
+
+		assert_true (new Bytes (opened).compare (new Bytes (plaintext)) == 0);
+
+		try {
+			TetraCrypto.open_message (message_key, signing_key, sealed, { 0xaa, 0xbb, 0xcd });
+			assert_not_reached ();
+		} catch (Efni.Error e) {
+		}
 	}
 
 	private void padme_snaps_to_bucket () {
