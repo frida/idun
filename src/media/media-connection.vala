@@ -15,9 +15,9 @@ namespace Idun {
 		public signal void connected ();
 		public signal void audio_received (uint8[] samples);
 
-		public MediaConnection (bool controlling) {
+		public MediaConnection (bool controlling, Bytes send_key, Bytes receive_key) {
 			ice = new IceAgent (controlling);
-			media = new RtpMediaSession ();
+			media = new RtpMediaSession (send_key, receive_key);
 
 			media.rtp_ready.connect ((packet) => ice.send (packet));
 			ice.received.connect ((packet) => media.deliver_rtp (packet));

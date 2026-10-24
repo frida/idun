@@ -9,8 +9,10 @@ namespace Idun.MediaConnectionTest {
 		new Harness ((h) => {
 			var host = (Harness) h;
 
-			var alice = new MediaConnection (true);
-			var bob = new MediaConnection (false);
+			var k1 = new Bytes (key (1));
+			var k2 = new Bytes (key (2));
+			var alice = new MediaConnection (true, k1, k2);
+			var bob = new MediaConnection (false, k2, k1);
 			host.keep_alive (alice);
 			host.keep_alive (bob);
 
@@ -35,6 +37,13 @@ namespace Idun.MediaConnectionTest {
 			alice.gather ();
 			bob.gather ();
 		}).run ();
+	}
+
+	private static uint8[] key (uint8 seed) {
+		var material = new uint8[RtpMediaSession.MASTER_KEY_LENGTH];
+		for (int i = 0; i != material.length; i++)
+			material[i] = (uint8) (seed * 40 + i);
+		return material;
 	}
 
 	private class Harness : Test.AsyncHarness {

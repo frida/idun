@@ -9,7 +9,8 @@ namespace Idun.RtpMediaSessionTest {
 		new Harness ((h) => {
 			var host = (Harness) h;
 
-			var session = new RtpMediaSession ();
+			var key = new Bytes (test_key ());
+			var session = new RtpMediaSession (key, key);
 			host.keep_alive (session);
 
 			session.rtp_ready.connect ((packet) => session.deliver_rtp (packet));
@@ -31,6 +32,13 @@ namespace Idun.RtpMediaSessionTest {
 				return Source.CONTINUE;
 			});
 		}).run ();
+	}
+
+	private static uint8[] test_key () {
+		var key = new uint8[RtpMediaSession.MASTER_KEY_LENGTH];
+		for (int i = 0; i != key.length; i++)
+			key[i] = (uint8) (i + 1);
+		return key;
 	}
 
 	private class Harness : Test.AsyncHarness {
