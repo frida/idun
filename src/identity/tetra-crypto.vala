@@ -199,13 +199,13 @@ namespace Idun {
 			return 0;
 		}
 
-		public static uint8[] open_message (uint8[] message_key, Bytes sender_signing_key,
+		public static uint8[] open_message (uint8[] message_key, uint8[] sender_signing_point,
 				uint8[] serialized, uint8[] authenticated_data) throws Efni.Error {
 			var message = TetraMessage.parse (serialized);
 
 			uint8[] transcript = build_signature_transcript (true, message.version,
 				message.ciphertext.get_data (), authenticated_data);
-			if (!verify (sender_signing_key, transcript, message.signature.get_data ()))
+			if (!verify_with_point (sender_signing_point, transcript, message.signature.get_data ()))
 				throw new Efni.Error.PROTOCOL ("Invalid pair-tetra message signature");
 
 			uint8[] iv, cipher_key;
@@ -268,6 +268,15 @@ namespace Idun {
 			var ctx = new MessageDigestContext ();
 			ctx.digest_verify_init (null, MessageDigest.fetch (null, "SHA256"), null,
 				load_private_key (private_key_pem));
+			return ctx.digest_verify (raw_to_der (raw_signature), data) == 1;
+		}
+
+		public static bool verify_with_point (uint8[] signing_point, uint8[] data, uint8[] raw_signature)
+				throws Efni.Error {
+			uint8[] point = (signing_point.length == 32) ? decompress_point (signing_point) : signing_point;
+			var ctx = new MessageDigestContext ();
+			ctx.digest_verify_init (null, MessageDigest.fetch (null, "SHA256"), null,
+				load_public_point (point));
 			return ctx.digest_verify (raw_to_der (raw_signature), data) == 1;
 		}
 

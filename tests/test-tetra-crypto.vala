@@ -72,7 +72,8 @@ namespace Idun.TetraCryptoTest {
 		"-----END PRIVATE KEY-----\n";
 
 	private void seals_and_opens_a_message () {
-		var signing_key = new Bytes (TEST_P256_KEY.data);
+		var signing_key = TetraCrypto.generate_key_agreement_key ();
+		uint8[] signing_point = TetraCrypto.compact_point (TetraCrypto.public_key_point (signing_key));
 		uint8[] message_key = new uint8[32];
 		for (int i = 0; i != 32; i++)
 			message_key[i] = (uint8) i;
@@ -82,12 +83,12 @@ namespace Idun.TetraCryptoTest {
 
 		uint8[] sealed = TetraCrypto.seal_message (message_key, signing_key, ecdh, 7, plaintext,
 			authenticated_data);
-		uint8[] opened = TetraCrypto.open_message (message_key, signing_key, sealed, authenticated_data);
+		uint8[] opened = TetraCrypto.open_message (message_key, signing_point, sealed, authenticated_data);
 
 		assert_true (new Bytes (opened).compare (new Bytes (plaintext)) == 0);
 
 		try {
-			TetraCrypto.open_message (message_key, signing_key, sealed, { 0xaa, 0xbb, 0xcd });
+			TetraCrypto.open_message (message_key, signing_point, sealed, { 0xaa, 0xbb, 0xcd });
 			assert_not_reached ();
 		} catch (Efni.Error e) {
 		}

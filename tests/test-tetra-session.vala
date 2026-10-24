@@ -6,7 +6,8 @@ namespace Idun.TetraSessionTest {
 	}
 
 	private void establishes_and_exchanges () {
-		var alice_signing = new Bytes (ALICE_KEY.data);
+		var alice_signing = TetraCrypto.generate_key_agreement_key ();
+		uint8[] alice_signing_point = TetraCrypto.compact_point (TetraCrypto.public_key_point (alice_signing));
 
 		Bytes bob_prekey = TetraCrypto.generate_key_agreement_key ();
 		uint8[] bob_prekey_point = TetraCrypto.compact_point (TetraCrypto.public_key_point (bob_prekey));
@@ -21,7 +22,7 @@ namespace Idun.TetraSessionTest {
 		var bob = TetraSession.establish_as_receiver (new Bytes (ALICE_KEY.data), bob_prekey,
 			bob_kyber_secret, parsed.ecdh_public_key.get_data (), parsed.kem_encapsulation.get_data ());
 
-		uint8[] plaintext = bob.open (message, alice_signing, { 7, 7, 7 });
+		uint8[] plaintext = bob.open (message, alice_signing_point, { 7, 7, 7 });
 		assert_true (new Bytes (plaintext).compare (new Bytes ("across the ratchet".data)) == 0);
 	}
 

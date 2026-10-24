@@ -27,7 +27,8 @@ namespace Idun.TetraRatchetTest {
 		uint8[] chain = new uint8[32];
 		var sender = new TetraSymmetricRatchet (chain);
 		var receiver = new TetraSymmetricRatchet (chain);
-		var signing_key = new Bytes (TEST_KEY.data);
+		var signing_key = TetraCrypto.generate_key_agreement_key ();
+		uint8[] signing_point = TetraCrypto.compact_point (TetraCrypto.public_key_point (signing_key));
 		uint8[] plaintext = "ratcheted".data;
 
 		uint64 index;
@@ -35,7 +36,7 @@ namespace Idun.TetraRatchetTest {
 		uint8[] sealed = TetraCrypto.seal_message (message_key, signing_key, new uint8[32], index,
 			plaintext, { 1, 2, 3 });
 
-		uint8[] opened = TetraCrypto.open_message (receiver.message_key_for (index), signing_key,
+		uint8[] opened = TetraCrypto.open_message (receiver.message_key_for (index), signing_point,
 			sealed, { 1, 2, 3 });
 		assert_true (new Bytes (opened).compare (new Bytes (plaintext)) == 0);
 	}

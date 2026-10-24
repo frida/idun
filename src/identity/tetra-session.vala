@@ -66,11 +66,11 @@ namespace Idun {
 				plaintext, authenticated_data, encapsulation);
 		}
 
-		public uint8[] open (uint8[] message, Bytes sender_signing_key, uint8[] authenticated_data)
+		public uint8[] open (uint8[] message, uint8[] sender_signing_point, uint8[] authenticated_data)
 				throws Efni.Error {
 			var parsed = TetraMessage.parse (message);
 			uint8[] message_key = receiving.message_key_for (parsed.message_index);
-			return TetraCrypto.open_message (message_key, sender_signing_key, message, authenticated_data);
+			return TetraCrypto.open_message (message_key, sender_signing_point, message, authenticated_data);
 		}
 	}
 }
