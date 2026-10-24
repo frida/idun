@@ -12,7 +12,9 @@ namespace Idun {
 		private const string RATCHET_BASE = "Tetra-v1.0-SymmetricRatchet-";
 		private const string CHAIN_KEY_INFO = RATCHET_BASE + "ChainKeyDerivation";
 		private const string MESSAGE_KEY_INFO = RATCHET_BASE + "MessageKeyDerivation";
-		private const string SENDER_AUTH_INFO = "Tetra-v1.0-SymmetricLayer-AES-CTR-Keying";
+		private const string SYMMETRIC_LAYER_BASE = "Tetra-v1.0-SymmetricLayer-";
+		private const string SENDER_AUTH_INFO = SYMMETRIC_LAYER_BASE + "AES-CTR-Keying";
+		private const string MESSAGE_KEY_INDICATOR_INFO = SYMMETRIC_LAYER_BASE + "MessageKeyIndicator";
 		private const string ROOT_KEY_INFO = "Tetra-v1.0-RootKeyDerivation-";
 		private const string MESSAGE_SIGNATURE_DOMAIN = "com.apple.Tetra.MessageSignature";
 		private const string NO_RATCHET_SIGNATURE_DOMAIN = "com.apple.TetraNoRatchet.MessageSignature";
@@ -20,6 +22,7 @@ namespace Idun {
 		private const int MESSAGE_KEY_LENGTH = 32;
 		private const int CTR_IV_LENGTH = 16;
 		private const int ROOT_AND_CHAIN_LENGTH = 64;
+		private const int MESSAGE_KEY_INDICATOR_LENGTH = 16;
 
 		public static uint8[] aes_256_ctr (uint8[] key, uint8[] iv, uint8[] data) throws Efni.Error {
 			var cipher = Cipher.fetch (null, "AES-256-CTR");
@@ -149,6 +152,11 @@ namespace Idun {
 				value >>= 8;
 			}
 			return octets;
+		}
+
+		public static uint8[] derive_message_key_indicator (uint8[] message_key) throws Efni.Error {
+			return hkdf_expand (ShortName.sha384, message_key, MESSAGE_KEY_INDICATOR_INFO.data,
+				MESSAGE_KEY_INDICATOR_LENGTH);
 		}
 
 		public static uint8[] advance_chain_key (uint8[] chain_key) throws Efni.Error {

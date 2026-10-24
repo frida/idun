@@ -9,6 +9,7 @@ namespace Idun.TetraCryptoTest {
 		GLib.Test.add_func ("/TetraCrypto/root-ratchet-splits-output", root_ratchet_splits_output);
 		GLib.Test.add_func ("/TetraCrypto/ecdsa-signs-and-verifies", ecdsa_signs_and_verifies);
 		GLib.Test.add_func ("/TetraCrypto/builds-signature-transcript", builds_signature_transcript);
+		GLib.Test.add_func ("/TetraCrypto/derives-message-key-indicator", derives_message_key_indicator);
 	}
 
 	private void ecdsa_signs_and_verifies () {
@@ -20,6 +21,14 @@ namespace Idun.TetraCryptoTest {
 		assert_true (signature.length == 64);
 		assert_true (TetraCrypto.verify (key, data, signature));
 		assert_false (TetraCrypto.verify (key, { 1, 2, 3, 4, 6 }, signature));
+	}
+
+	private void derives_message_key_indicator () {
+		uint8[] indicator = TetraCrypto.derive_message_key_indicator (new uint8[32]);
+		uint8[] again = TetraCrypto.derive_message_key_indicator (new uint8[32]);
+
+		assert_true (indicator.length == 16);
+		assert_true (new Bytes (indicator).compare (new Bytes (again)) == 0);
 	}
 
 	private void builds_signature_transcript () {
