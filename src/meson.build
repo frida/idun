@@ -27,6 +27,7 @@ idun_sources = [
   'transport' / 'usbmux.vala',
   'transport' / 'dns.vala',
 
+  'codec' / 'protobuf.vala',
   'codec' / 'xpc.vala',
   'codec' / 'dtx.vala',
   'codec' / 'keyed-archive.vala',

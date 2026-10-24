@@ -55,23 +55,24 @@ namespace Idun {
 		}
 
 		public uint8[] device_identity_data (uint32 tetra_version) {
-			var message = new ByteArray ();
-			append_bytes_field (message, 1, signing_compact_key ());
-			append_varint_field (message, 2, tetra_version);
-			return message.data;
+			return new ProtobufWriter ()
+				.append_bytes (1, signing_compact_key ())
+				.append_varint (2, tetra_version)
+				.data;
 		}
 
 		public uint8[] device_prekey_data (double timestamp, uint32 tetra_version) {
-			var tetra = new ByteArray ();
-			append_bytes_field (tetra, 1, kem_public_key ());
-			append_bytes_field (tetra, 2, registration_signature (timestamp, tetra_version));
+			uint8[] tetra = new ProtobufWriter ()
+				.append_bytes (1, kem_public_key ())
+				.append_bytes (2, registration_signature (timestamp, tetra_version))
+				.data;
 
-			var message = new ByteArray ();
-			append_bytes_field (message, 1, prekey_compact_key ());
-			append_bytes_field (message, 2, prekey_signature (timestamp));
-			append_double_field (message, 3, timestamp);
-			append_bytes_field (message, 4, tetra.data);
-			return message.data;
+			return new ProtobufWriter ()
+				.append_bytes (1, prekey_compact_key ())
+				.append_bytes (2, prekey_signature (timestamp))
+				.append_double (3, timestamp)
+				.append_bytes (4, tetra)
+				.data;
 		}
 
 		public uint8[] signing_public_point () {
@@ -164,32 +165,6 @@ namespace Idun {
 				result[i] = (uint8) (diff + 256 * borrow);
 			}
 			return result;
-		}
-
-		private static void append_bytes_field (ByteArray message, int field, uint8[] value) {
-			append_varint (message, ((uint64) field << 3) | 2);
-			append_varint (message, value.length);
-			message.append (value);
-		}
-
-		private static void append_varint_field (ByteArray message, int field, uint64 value) {
-			append_varint (message, (uint64) field << 3);
-			append_varint (message, value);
-		}
-
-		private static void append_double_field (ByteArray message, int field, double value) {
-			append_varint (message, ((uint64) field << 3) | 1);
-			message.append (little_endian_double (value));
-		}
-
-		private static void append_varint (ByteArray message, uint64 value) {
-			do {
-				uint8 piece = (uint8) (value & 0x7f);
-				value >>= 7;
-				if (value != 0)
-					piece |= 0x80;
-				message.append ({ piece });
-			} while (value != 0);
 		}
 
 		private static uint8[] little_endian_double (double value) {

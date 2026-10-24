@@ -122,32 +122,11 @@ namespace Idun {
 		}
 
 		private static uint8[] build_conversation_message (int type, string group_id, uint64 flag) {
-			var message = new ByteArray ();
-			append_varint_field (message, 2, type);
-			append_bytes_field (message, 5, group_id.data);
-			append_varint_field (message, 7, flag);
-			return message.data;
-		}
-
-		private static void append_varint_field (ByteArray message, int field, uint64 value) {
-			append_varint (message, (uint64) field << 3);
-			append_varint (message, value);
-		}
-
-		private static void append_bytes_field (ByteArray message, int field, uint8[] value) {
-			append_varint (message, ((uint64) field << 3) | 2);
-			append_varint (message, value.length);
-			message.append (value);
-		}
-
-		private static void append_varint (ByteArray message, uint64 value) {
-			do {
-				uint8 piece = (uint8) (value & 0x7f);
-				value >>= 7;
-				if (value != 0)
-					piece |= 0x80;
-				message.append ({ piece });
-			} while (value != 0);
+			return new ProtobufWriter ()
+				.append_varint (2, type)
+				.append_bytes (5, group_id.data)
+				.append_varint (7, flag)
+				.data;
 		}
 	}
 
