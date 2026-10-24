@@ -112,7 +112,7 @@ namespace Idun {
 		 */
 		public static uint8[] seal_message (uint8[] message_key, Bytes signing_key,
 				uint8[] ecdh_public_key, uint64 message_index, uint8[] plaintext,
-				uint8[] authenticated_data) throws Efni.Error {
+				uint8[] authenticated_data, Bytes? kem_encapsulation = null) throws Efni.Error {
 			uint8[] iv, cipher_key;
 			derive_sender_authentication (message_key, out iv, out cipher_key);
 
@@ -123,8 +123,18 @@ namespace Idun {
 				authenticated_data);
 			var message = new TetraMessage (TETRA_VERSION, new Bytes (ciphertext),
 				new Bytes (sign (signing_key, transcript)), new Bytes (ecdh_public_key), message_index,
-				new Bytes (derive_message_key_indicator (message_key)));
+				new Bytes (derive_message_key_indicator (message_key)), kem_encapsulation);
 			return message.serialize ();
+		}
+
+		public static Bytes generate_key_agreement_key () {
+			var key = new Key.generate_ec ("P-256");
+			var sink = new OpenSSL.BasicIO (OpenSSL.BasicIOMethod.memory ());
+			OpenSSL.Envelope.write_private_key_pem (sink, key);
+			unowned uint8[] pem;
+			long size = sink.get_mem_data (out pem);
+			pem.length = (int) size;
+			return new Bytes (pem);
 		}
 
 		public static uint8[] open_message (uint8[] message_key, Bytes sender_signing_key,

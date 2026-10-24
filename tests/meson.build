@@ -22,6 +22,7 @@ if host_os != 'macos'
   test_sources += 'test-tetra-message.vala'
   test_sources += 'test-tetra-crypto.vala'
   test_sources += 'test-tetra-ratchet.vala'
+  test_sources += 'test-tetra-session.vala'
 endif
 
 test_deps = [glib_dep, gobject_dep, gio_dep, gee_dep, json_glib_dep, efni_dep, idun_dep] + platform_deps
