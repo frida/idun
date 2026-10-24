@@ -4,6 +4,7 @@ namespace Idun.TetraMessageTest {
 	public void add_tests () {
 		GLib.Test.add_func ("/TetraMessage/round-trips", round_trips);
 		GLib.Test.add_func ("/TetraMessage/reparses-captured-wire-bytes", reparses_captured_wire_bytes);
+		GLib.Test.add_func ("/TetraMessage/wraps-in-an-outer-message", wraps_in_an_outer_message);
 	}
 
 	private void round_trips () {
@@ -32,6 +33,14 @@ namespace Idun.TetraMessageTest {
 		assert_true (message.message_key_indicator.length == 16);
 		assert_true (message.kem_encapsulation == null);
 		assert_true (new Bytes (message.serialize ()).compare (new Bytes (wire)) == 0);
+	}
+
+	private void wraps_in_an_outer_message () {
+		var message = TetraMessage.parse (decode_hex (CAPTURED_RATCHET_MESSAGE));
+
+		var unwrapped = TetraMessage.unwrap (message.wrap ());
+
+		assert_true (new Bytes (unwrapped.serialize ()).compare (new Bytes (message.serialize ())) == 0);
 	}
 
 	private const string CAPTURED_RATCHET_MESSAGE =

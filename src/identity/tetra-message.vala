@@ -73,6 +73,23 @@ namespace Idun {
 			return writer.data;
 		}
 
+		public uint8[] wrap () {
+			return new ProtobufWriter ().append_bytes (OUTER_TETRA_FIELD, serialize ()).data;
+		}
+
+		public static TetraMessage unwrap (uint8[] outer_message) throws Efni.Error {
+			var reader = new ProtobufReader (outer_message);
+			while (reader.has_more) {
+				uint8 wire_type;
+				if (reader.read_field (out wire_type) == OUTER_TETRA_FIELD)
+					return parse (reader.read_bytes ());
+				reader.skip (wire_type);
+			}
+			throw new Efni.Error.PROTOCOL ("NGM outer message carries no pair-tetra message");
+		}
+
+		private const int OUTER_TETRA_FIELD = 4;
+
 		public static TetraMessage parse (uint8[] data) throws Efni.Error {
 			uint32 version = 0;
 			Bytes? ciphertext = null;
