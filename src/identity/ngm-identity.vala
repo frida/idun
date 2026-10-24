@@ -61,7 +61,7 @@ namespace Idun {
 				.data;
 		}
 
-		public uint8[] device_prekey_data (double timestamp, uint32 tetra_version) {
+		public uint8[] device_prekey_data (double timestamp, uint32 tetra_version) throws Efni.Error {
 			uint8[] tetra = new ProtobufWriter ()
 				.append_bytes (1, kem_public_key ())
 				.append_bytes (2, registration_signature (timestamp, tetra_version))
@@ -95,7 +95,7 @@ namespace Idun {
 			return kem_public.get_data ();
 		}
 
-		public uint8[] registration_signature (double timestamp, uint32 tetra_version) {
+		public uint8[] registration_signature (double timestamp, uint32 tetra_version) throws Efni.Error {
 			var data = new ByteArray ();
 			data.append ("com.apple.Tetra.Registration".data);
 			data.append (kem_public_key ());
@@ -105,7 +105,7 @@ namespace Idun {
 			return sign (data.data);
 		}
 
-		public uint8[] prekey_signature (double timestamp) {
+		public uint8[] prekey_signature (double timestamp) throws Efni.Error {
 			var data = new ByteArray ();
 			data.append ("NGMPrekeySignature".data);
 			data.append (prekey_compact_key ());
@@ -113,30 +113,8 @@ namespace Idun {
 			return sign (data.data);
 		}
 
-		private uint8[] sign (uint8[] data) {
-			OpenSSL.Envelope.Key key = load_private_key (signing_key);
-			var ctx = new OpenSSL.Envelope.MessageDigestContext ();
-			ctx.digest_sign_init (null, OpenSSL.Envelope.MessageDigest.fetch (null, "SHA256"), null, key);
-			size_t length = 0;
-			ctx.digest_sign (null, ref length, data);
-			var der = new uint8[length];
-			ctx.digest_sign (der, ref length, data);
-			der.length = (int) length;
-			return der_signature_to_raw (der);
-		}
-
-		private static uint8[] der_signature_to_raw (uint8[] der) {
-			int pos = 2;
-			var raw = new uint8[64];
-			for (int component = 0; component != 2; component++) {
-				pos++;
-				int length = der[pos++];
-				int start = pos + int.max (0, length - 32);
-				int offset = 32 * component + int.max (0, 32 - length);
-				Memory.copy ((uint8*) raw + offset, (uint8*) der + start, pos + length - start);
-				pos += length;
-			}
-			return raw;
+		private uint8[] sign (uint8[] data) throws Efni.Error {
+			return TetraCrypto.sign (signing_key, data);
 		}
 
 		private static OpenSSL.Envelope.Key generate_compact_key () {

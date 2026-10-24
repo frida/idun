@@ -92,6 +92,37 @@ namespace Idun {
 			chain = derived[MESSAGE_KEY_LENGTH : ROOT_AND_CHAIN_LENGTH];
 		}
 
+		/**
+		 * Sign with a P-256 key the way the pair-tetra and NGM transcripts are signed:
+		 * SHA-256 ECDSA whose DER output is unpacked to the fixed 64-byte r‖s the wire
+		 * format carries.
+		 */
+		public static uint8[] sign (Bytes private_key_pem, uint8[] data) throws Efni.Error {
+			var ctx = new MessageDigestContext ();
+			ctx.digest_sign_init (null, MessageDigest.fetch (null, "SHA256"), null,
+				load_private_key (private_key_pem));
+
+			size_t length = 0;
+			ctx.digest_sign (null, ref length, data);
+			var der = new uint8[length];
+			ctx.digest_sign (der, ref length, data);
+			der.length = (int) length;
+			return der_to_raw (der);
+		}
+
+		public static bool verify (Bytes private_key_pem, uint8[] data, uint8[] raw_signature)
+				throws Efni.Error {
+			var ctx = new MessageDigestContext ();
+			ctx.digest_verify_init (null, MessageDigest.fetch (null, "SHA256"), null,
+				load_private_key (private_key_pem));
+			return ctx.digest_verify (raw_to_der (raw_signature), data) == 1;
+		}
+
+		private static Key load_private_key (Bytes pem) {
+			var source = new OpenSSL.BasicIO.from_static_memory_buffer (pem.get_data ());
+			return new Key.from_private_key_pem (source);
+		}
+
 		public static uint8[] i2osp (uint64 value, int length) {
 			var octets = new uint8[length];
 			for (int i = length - 1; i >= 0; i--) {
@@ -143,6 +174,45 @@ namespace Idun {
 			if (result != 1)
 				throw new Efni.Error.PROTOCOL ("HKDF derivation failed");
 			return output;
+		}
+
+		private static uint8[] der_to_raw (uint8[] der) {
+			int pos = 2;
+			var raw = new uint8[64];
+			for (int component = 0; component != 2; component++) {
+				pos++;
+				int length = der[pos++];
+				int start = pos + int.max (0, length - 32);
+				int offset = 32 * component + int.max (0, 32 - length);
+				Memory.copy ((uint8*) raw + offset, (uint8*) der + start, pos + length - start);
+				pos += length;
+			}
+			return raw;
+		}
+
+		private static uint8[] raw_to_der (uint8[] raw) {
+			var body = new ByteArray ();
+			body.append (der_integer (raw[0 : 32]));
+			body.append (der_integer (raw[32 : 64]));
+
+			var der = new ByteArray ();
+			der.append ({ 0x30, (uint8) body.len });
+			der.append (body.data);
+			return der.data;
+		}
+
+		private static uint8[] der_integer (uint8[] value) {
+			int start = 0;
+			while (start < value.length - 1 && value[start] == 0)
+				start++;
+			bool pad = (value[start] & 0x80) != 0;
+
+			var integer = new ByteArray ();
+			integer.append ({ 0x02, (uint8) (value.length - start + (pad ? 1 : 0)) });
+			if (pad)
+				integer.append ({ 0x00 });
+			integer.append (value[start : value.length]);
+			return integer.data;
 		}
 
 		private static uint8[] to_bytes (int* value) {

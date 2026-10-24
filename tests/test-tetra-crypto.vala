@@ -7,7 +7,26 @@ namespace Idun.TetraCryptoTest {
 		GLib.Test.add_func ("/TetraCrypto/hkdf-matches-rfc5869", hkdf_matches_rfc5869);
 		GLib.Test.add_func ("/TetraCrypto/i2osp-is-big-endian", i2osp_is_big_endian);
 		GLib.Test.add_func ("/TetraCrypto/root-ratchet-splits-output", root_ratchet_splits_output);
+		GLib.Test.add_func ("/TetraCrypto/ecdsa-signs-and-verifies", ecdsa_signs_and_verifies);
 	}
+
+	private void ecdsa_signs_and_verifies () {
+		var key = new Bytes (TEST_P256_KEY.data);
+		uint8[] data = { 1, 2, 3, 4, 5 };
+
+		uint8[] signature = TetraCrypto.sign (key, data);
+
+		assert_true (signature.length == 64);
+		assert_true (TetraCrypto.verify (key, data, signature));
+		assert_false (TetraCrypto.verify (key, { 1, 2, 3, 4, 6 }, signature));
+	}
+
+	private const string TEST_P256_KEY =
+		"-----BEGIN PRIVATE KEY-----\n" +
+		"MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg4reMHFY5YGZ1zGJK\n" +
+		"QO2LdzMlylho9Kyv4qExN6vRK82hRANCAASJLmUCAcaK0A2KidzkIrjAijWty4iW\n" +
+		"LEyPIwpbHLC1IbdN4lL5F4bbd+9PbJoVtRSR5q74ljf6o9nFPyfLrcVn\n" +
+		"-----END PRIVATE KEY-----\n";
 
 	private void i2osp_is_big_endian () {
 		assert_true (new Bytes (TetraCrypto.i2osp (256, 4)).compare (new Bytes (decode_hex ("00000100"))) == 0);
