@@ -32,6 +32,70 @@ namespace Idun {
 			return message_key;
 		}
 
+		public uint8[] serialize () {
+			var writer = new ProtobufWriter ();
+			writer.append_bytes (1, chain_key);
+			writer.append_varint (2, next_index);
+			foreach (var entry in skipped.entries) {
+				uint8[] pair = new ProtobufWriter ()
+					.append_varint (1, uint64.parse (entry.key))
+					.append_bytes (2, entry.value.get_data ())
+					.data;
+				writer.append_bytes (3, pair);
+			}
+			return writer.data;
+		}
+
+		public static TetraSymmetricRatchet restore (uint8[] data) throws Efni.Error {
+			uint8[]? chain_key = null;
+			uint64 next_index = 0;
+			var skipped = new Gee.HashMap<string, Bytes> ();
+
+			var reader = new ProtobufReader (data);
+			while (reader.has_more) {
+				uint8 wire_type;
+				switch (reader.read_field (out wire_type)) {
+					case 1:
+						chain_key = reader.read_bytes ();
+						break;
+					case 2:
+						next_index = reader.read_varint ();
+						break;
+					case 3:
+						uint64 skipped_index = 0;
+						Bytes? key = null;
+						var pair = new ProtobufReader (reader.read_bytes ());
+						while (pair.has_more) {
+							uint8 pair_wire;
+							switch (pair.read_field (out pair_wire)) {
+								case 1:
+									skipped_index = pair.read_varint ();
+									break;
+								case 2:
+									key = new Bytes (pair.read_bytes ());
+									break;
+								default:
+									pair.skip (pair_wire);
+									break;
+							}
+						}
+						if (key != null)
+							skipped[skipped_index.to_string ()] = key;
+						break;
+					default:
+						reader.skip (wire_type);
+						break;
+				}
+			}
+
+			if (chain_key == null)
+				throw new Efni.Error.PROTOCOL ("Incomplete pair-tetra ratchet state");
+
+			var ratchet = new TetraSymmetricRatchet (chain_key, next_index);
+			ratchet.skipped = skipped;
+			return ratchet;
+		}
+
 		public uint8[] message_key_for (uint64 target_index) throws Efni.Error {
 			if (target_index < next_index) {
 				Bytes? cached = skipped[target_index.to_string ()];

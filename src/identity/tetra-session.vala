@@ -95,6 +95,88 @@ namespace Idun {
 				authenticated_data);
 		}
 
+		public uint8[] serialize () {
+			var writer = new ProtobufWriter ();
+			writer
+				.append_bytes (1, signing_key.get_data ())
+				.append_bytes (2, root_key)
+				.append_bytes (3, our_ratchet_key.get_data ())
+				.append_bytes (4, our_ratchet_point)
+				.append_bytes (5, their_ratchet_point);
+			if (sending != null)
+				writer.append_bytes (6, sending.serialize ());
+			if (receiving != null)
+				writer.append_bytes (7, receiving.serialize ());
+			writer.append_varint (8, sending_needs_step ? 1 : 0);
+			if (encapsulation_to_send != null)
+				writer.append_bytes (9, encapsulation_to_send.get_data ());
+			return writer.data;
+		}
+
+		public static TetraSession restore (uint8[] data) throws Efni.Error {
+			Bytes? signing_key = null;
+			uint8[]? root_key = null;
+			Bytes? our_ratchet_key = null;
+			uint8[]? our_ratchet_point = null;
+			uint8[]? their_ratchet_point = null;
+			TetraSymmetricRatchet? sending = null;
+			TetraSymmetricRatchet? receiving = null;
+			bool sending_needs_step = false;
+			Bytes? encapsulation = null;
+
+			var reader = new ProtobufReader (data);
+			while (reader.has_more) {
+				uint8 wire_type;
+				switch (reader.read_field (out wire_type)) {
+					case 1:
+						signing_key = new Bytes (reader.read_bytes ());
+						break;
+					case 2:
+						root_key = reader.read_bytes ();
+						break;
+					case 3:
+						our_ratchet_key = new Bytes (reader.read_bytes ());
+						break;
+					case 4:
+						our_ratchet_point = reader.read_bytes ();
+						break;
+					case 5:
+						their_ratchet_point = reader.read_bytes ();
+						break;
+					case 6:
+						sending = TetraSymmetricRatchet.restore (reader.read_bytes ());
+						break;
+					case 7:
+						receiving = TetraSymmetricRatchet.restore (reader.read_bytes ());
+						break;
+					case 8:
+						sending_needs_step = reader.read_varint () != 0;
+						break;
+					case 9:
+						encapsulation = new Bytes (reader.read_bytes ());
+						break;
+					default:
+						reader.skip (wire_type);
+						break;
+				}
+			}
+
+			if (signing_key == null || root_key == null || our_ratchet_key == null ||
+					our_ratchet_point == null || their_ratchet_point == null)
+				throw new Efni.Error.PROTOCOL ("Incomplete pair-tetra session state");
+
+			var session = new TetraSession (signing_key);
+			session.root_key = root_key;
+			session.our_ratchet_key = our_ratchet_key;
+			session.our_ratchet_point = our_ratchet_point;
+			session.their_ratchet_point = their_ratchet_point;
+			session.sending = sending;
+			session.receiving = receiving;
+			session.sending_needs_step = sending_needs_step;
+			session.encapsulation_to_send = encapsulation;
+			return session;
+		}
+
 		private void step_sending () throws Efni.Error {
 			our_ratchet_key = TetraCrypto.generate_key_agreement_key ();
 			our_ratchet_point = TetraCrypto.compact_point (
