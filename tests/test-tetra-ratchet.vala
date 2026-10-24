@@ -4,6 +4,7 @@ namespace Idun.TetraRatchetTest {
 	public void add_tests () {
 		GLib.Test.add_func ("/TetraRatchet/sender-and-receiver-agree", sender_and_receiver_agree);
 		GLib.Test.add_func ("/TetraRatchet/seals-through-the-ratchet", seals_through_the_ratchet);
+		GLib.Test.add_func ("/TetraRatchet/opens-out-of-order", opens_out_of_order);
 	}
 
 	private void sender_and_receiver_agree () {
@@ -39,6 +40,21 @@ namespace Idun.TetraRatchetTest {
 		uint8[] opened = TetraCrypto.open_message (receiver.message_key_for (index), signing_point,
 			sealed, { 1, 2, 3 });
 		assert_true (new Bytes (opened).compare (new Bytes (plaintext)) == 0);
+	}
+
+	private void opens_out_of_order () {
+		uint8[] chain = new uint8[32];
+		var sender = new TetraSymmetricRatchet (chain);
+		var receiver = new TetraSymmetricRatchet (chain);
+
+		uint64 i0, i1, i2;
+		uint8[] k0 = sender.advance (out i0);
+		uint8[] k1 = sender.advance (out i1);
+		uint8[] k2 = sender.advance (out i2);
+
+		assert_true (new Bytes (receiver.message_key_for (2)).compare (new Bytes (k2)) == 0);
+		assert_true (new Bytes (receiver.message_key_for (0)).compare (new Bytes (k0)) == 0);
+		assert_true (new Bytes (receiver.message_key_for (1)).compare (new Bytes (k1)) == 0);
 	}
 
 	private const string TEST_KEY =
