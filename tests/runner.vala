@@ -13,6 +13,7 @@ namespace Idun.Test {
 		Idun.CourierPackedTest.add_tests ();
 		Idun.MessageIdentityTest.add_tests ();
 		Idun.NgmIdentityTest.add_tests ();
+		Idun.NgmPeerPrekeyTest.add_tests ();
 		Idun.TetraMessageTest.add_tests ();
 		Idun.TetraCryptoTest.add_tests ();
 		Idun.TetraRatchetTest.add_tests ();

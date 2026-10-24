@@ -166,13 +166,27 @@ namespace Idun {
 						if (!client_data.has ("public-message-identity-key"))
 							continue;
 						peers.set (uri, new PeerIdentity (uri, identity.get_bytes ("push-token"),
-							client_data.get_bytes ("public-message-identity-key")));
+							client_data.get_bytes ("public-message-identity-key"),
+							parse_ngm_prekey (client_data)));
 					}
 				}
 			} catch (PlistError e) {
 				throw new Efni.Error.PROTOCOL ("Malformed IDS lookup response: %s", e.message);
 			}
 			return peers;
+		}
+
+		private static NgmPeerPrekey? parse_ngm_prekey (PlistDict client_data) {
+			if (!client_data.has ("public-message-ngm-device-prekey-data-key") ||
+					!client_data.has ("kt-loggable-data"))
+				return null;
+			try {
+				return NgmPeerPrekey.parse (
+					client_data.get_bytes ("public-message-ngm-device-prekey-data-key"),
+					client_data.get_bytes ("kt-loggable-data"));
+			} catch (GLib.Error e) {
+				return null;
+			}
 		}
 
 		private async Bytes send (Soup.Message message, Cancellable? cancellable) throws Efni.Error, IOError {
@@ -219,8 +233,15 @@ namespace Idun {
 			construct;
 		}
 
-		public PeerIdentity (string uri, Bytes push_token, Bytes identity_key) {
-			Object (uri: uri, push_token: push_token, identity_key: identity_key);
+		public NgmPeerPrekey? ngm_prekey {
+			get;
+			construct;
+		}
+
+		public PeerIdentity (string uri, Bytes push_token, Bytes identity_key,
+				NgmPeerPrekey? ngm_prekey = null) {
+			Object (uri: uri, push_token: push_token, identity_key: identity_key,
+				ngm_prekey: ngm_prekey);
 		}
 	}
 }
