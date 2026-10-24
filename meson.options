@@ -27,3 +27,9 @@ option('quickshell',
   value: 'auto',
   description: 'Build the Quickshell/Qt QML module'
 )
+
+option('media',
+  type: 'feature',
+  value: 'auto',
+  description: 'Build call media support (GStreamer RTP/SRTP over libnice ICE)'
+)

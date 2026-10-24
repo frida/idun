@@ -21,13 +21,16 @@ if host_os != 'macos'
   test_sources += 'test-ngm-identity.vala'
   test_sources += 'test-ngm-peer-prekey.vala'
   test_sources += 'test-tetra-message.vala'
-  test_sources += 'test-ice-agent.vala'
-  test_sources += 'test-rtp-media-session.vala'
-  test_sources += 'test-media-connection.vala'
   test_sources += 'test-tetra-crypto.vala'
   test_sources += 'test-tetra-ratchet.vala'
   test_sources += 'test-tetra-session.vala'
   test_sources += 'test-tetra-authdata.vala'
+endif
+
+if build_media
+  test_sources += 'test-ice-agent.vala'
+  test_sources += 'test-rtp-media-session.vala'
+  test_sources += 'test-media-connection.vala'
 endif
 
 test_deps = [glib_dep, gobject_dep, gio_dep, gee_dep, json_glib_dep, efni_dep, idun_dep] + platform_deps

@@ -5,7 +5,7 @@ namespace Idun.Test {
 		string runtime_dir = isolate_daemon ();
 #endif
 		GLib.Test.init (ref args);
-#if !MACOS
+#if HAVE_MEDIA
 		Gst.init (ref args);
 #endif
 
@@ -18,13 +18,15 @@ namespace Idun.Test {
 		Idun.NgmIdentityTest.add_tests ();
 		Idun.NgmPeerPrekeyTest.add_tests ();
 		Idun.TetraMessageTest.add_tests ();
-		Idun.IceAgentTest.add_tests ();
-		Idun.RtpMediaSessionTest.add_tests ();
-		Idun.MediaConnectionTest.add_tests ();
 		Idun.TetraCryptoTest.add_tests ();
 		Idun.TetraRatchetTest.add_tests ();
 		Idun.TetraSessionTest.add_tests ();
 		Idun.TetraAuthDataTest.add_tests ();
+#endif
+#if HAVE_MEDIA
+		Idun.IceAgentTest.add_tests ();
+		Idun.RtpMediaSessionTest.add_tests ();
+		Idun.MediaConnectionTest.add_tests ();
 #endif
 #if HAVE_DAEMON
 		Idun.DaemonTest.add_tests ();

@@ -73,9 +73,6 @@ if host_os != 'macos'
     'identity' / 'facetime.vala',
     'identity' / 'identity-oracle.vala',
     'identity' / 'apple-root-ca.vala',
-    'media' / 'ice-agent.vala',
-    'media' / 'rtp-media-session.vala',
-    'media' / 'media-connection.vala',
   ]
 endif
 
@@ -117,6 +114,14 @@ elif host_os == 'linux'
   ]
 else
   idun_sources += 'transport' / 'device-monitor-unix.c'
+endif
+
+if build_media
+  idun_sources += [
+    'media' / 'ice-agent.vala',
+    'media' / 'rtp-media-session.vala',
+    'media' / 'media-connection.vala',
+  ]
 endif
 
 idun_gir_name = f'Idun-@api_version@.gir'

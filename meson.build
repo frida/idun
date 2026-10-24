@@ -46,6 +46,7 @@ platform_reqs = []
 platform_vala_args = []
 platform_link_args = []
 vala_defines = []
+build_media = false
 
 if host_os_family == 'windows'
   platform_deps += dependency('gio-windows-2.0')
@@ -115,17 +116,17 @@ if host_os != 'macos'
   platform_reqs += 'libusb-1.0'
   platform_vala_args += '--pkg=libusb-1.0'
 
-  platform_deps += dependency('nice')
-  platform_reqs += 'nice'
-  platform_vala_args += '--pkg=nice'
-
-  platform_deps += dependency('gstreamer-1.0')
-  platform_reqs += 'gstreamer-1.0'
-  platform_vala_args += '--pkg=gstreamer-1.0'
-
-  platform_deps += dependency('gstreamer-app-1.0')
-  platform_reqs += 'gstreamer-app-1.0'
-  platform_vala_args += '--pkg=gstreamer-app-1.0'
+  media_opt = get_option('media')
+  nice_dep = dependency('nice', required: media_opt)
+  media_gst_dep = dependency('gstreamer-1.0', required: media_opt)
+  media_gst_app_dep = dependency('gstreamer-app-1.0', required: media_opt)
+  build_media = nice_dep.found() and media_gst_dep.found() and media_gst_app_dep.found()
+  if build_media
+    platform_deps += [nice_dep, media_gst_dep, media_gst_app_dep]
+    platform_reqs += ['nice', 'gstreamer-1.0', 'gstreamer-app-1.0']
+    platform_vala_args += ['--pkg=nice', '--pkg=gstreamer-1.0', '--pkg=gstreamer-app-1.0']
+    vala_defines += 'HAVE_MEDIA'
+  endif
 
   platform_deps += dependency('kyber', fallback: ['kyber', 'kyber_dep'])
   platform_vala_args += '--pkg=kyber'
