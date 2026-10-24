@@ -8,6 +8,7 @@ namespace Idun.TetraCryptoTest {
 		GLib.Test.add_func ("/TetraCrypto/i2osp-is-big-endian", i2osp_is_big_endian);
 		GLib.Test.add_func ("/TetraCrypto/root-ratchet-splits-output", root_ratchet_splits_output);
 		GLib.Test.add_func ("/TetraCrypto/ecdsa-signs-and-verifies", ecdsa_signs_and_verifies);
+		GLib.Test.add_func ("/TetraCrypto/builds-signature-transcript", builds_signature_transcript);
 	}
 
 	private void ecdsa_signs_and_verifies () {
@@ -20,6 +21,30 @@ namespace Idun.TetraCryptoTest {
 		assert_true (TetraCrypto.verify (key, data, signature));
 		assert_false (TetraCrypto.verify (key, { 1, 2, 3, 4, 6 }, signature));
 	}
+
+	private void builds_signature_transcript () {
+		uint8[] captured = decode_hex (CAPTURED_TRANSCRIPT);
+		uint8[] ciphertext = captured[40 : 296];
+		uint8[] authenticated_data = captured[296 : captured.length];
+
+		uint8[] built = TetraCrypto.build_signature_transcript (true, 15, ciphertext, authenticated_data);
+
+		assert_true (new Bytes (built).compare (new Bytes (captured)) == 0);
+	}
+
+	private const string CAPTURED_TRANSCRIPT =
+		"636f6d2e6170706c652e54657472612e4d6573736167655369676e61747572650000000f000001003dd95fae4dcca50d" +
+		"4ccb206e022ef32fe901b9796b4728bed6374e846c90d5e9c2762a7ba10e7dd714ea559cc851934b31b40b64e2fcc6b8" +
+		"e7c2ee13d0426414929b8c937ee878ac63990acd5a4e741adf92af7a4758fdbd13436d8f12eb40fe869b07b377a5e2e5" +
+		"c4b76c646b584d7915d29305e7d45aefc6462fa61f205ed27a1845149d1ba2416fb4fa38f397193a50a58a3824bacd96" +
+		"daf59a69d7a5463ea3d2cb92de82e306c7cbc2d62abcd6c6c6038e377a2f5dda7f6915d4a20c0fdcaff08d7738343fd6" +
+		"af7aa810d655c24ca35cf2ecb5398325368bd85def2c6744d43b021ffbbac0ddccf0a1c4effd37acb80095b15a00dba3" +
+		"edf7f46b7d18dad300000026636f6d2e6170706c652e707269766174652e616c6c6f792e6661636574696d652e6d756c" +
+		"7469c999fd908f4cda286955c1bfda83ae435012aec942aae0c11cb6a0d6d675da76f240fdd982f7a34d35e45d47bc6b" +
+		"613e010000000000000f74656c3a2b3437343832373036343500000020f946664dfd8c7ea0ed58d9062321142231d266" +
+		"f86b458e89ae8e30d69bfaf16edbf5d35caf5250f23c47337693eea96d4dd827a9a868b6e2271147cd859ea2e9000000" +
+		"0f74656c3a2b3437343832373036343500000020b4cf12e3f001248a438e824fa4c2c30121915dbbbaaf69e50d4ac275" +
+		"5cc0fa3a66ce2c2b1d82e6c922071f25c751be5088b286786b6661d319d855b5dffea9ee00000000000000000000";
 
 	private const string TEST_P256_KEY =
 		"-----BEGIN PRIVATE KEY-----\n" +

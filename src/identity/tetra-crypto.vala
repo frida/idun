@@ -14,6 +14,8 @@ namespace Idun {
 		private const string MESSAGE_KEY_INFO = RATCHET_BASE + "MessageKeyDerivation";
 		private const string SENDER_AUTH_INFO = "Tetra-v1.0-SymmetricLayer-AES-CTR-Keying";
 		private const string ROOT_KEY_INFO = "Tetra-v1.0-RootKeyDerivation-";
+		private const string MESSAGE_SIGNATURE_DOMAIN = "com.apple.Tetra.MessageSignature";
+		private const string NO_RATCHET_SIGNATURE_DOMAIN = "com.apple.TetraNoRatchet.MessageSignature";
 
 		private const int MESSAGE_KEY_LENGTH = 32;
 		private const int CTR_IV_LENGTH = 16;
@@ -97,6 +99,23 @@ namespace Idun {
 		 * SHA-256 ECDSA whose DER output is unpacked to the fixed 64-byte r‖s the wire
 		 * format carries.
 		 */
+		/**
+		 * Assemble the transcript a pair-tetra message signature covers: the domain that
+		 * separates a ratchet message from a reset one, the protocol version and the
+		 * ciphertext each length-framed big endian, and the authenticated data the
+		 * messaging layer binds the message to (its handles, tokens and ratchet keys).
+		 */
+		public static uint8[] build_signature_transcript (bool ratchet, uint32 version,
+				uint8[] ciphertext, uint8[] authenticated_data) {
+			var transcript = new ByteArray ();
+			transcript.append ((ratchet ? MESSAGE_SIGNATURE_DOMAIN : NO_RATCHET_SIGNATURE_DOMAIN).data);
+			transcript.append (i2osp (version, 4));
+			transcript.append (i2osp (ciphertext.length, 4));
+			transcript.append (ciphertext);
+			transcript.append (authenticated_data);
+			return transcript.data;
+		}
+
 		public static uint8[] sign (Bytes private_key_pem, uint8[] data) throws Efni.Error {
 			var ctx = new MessageDigestContext ();
 			ctx.digest_sign_init (null, MessageDigest.fetch (null, "SHA256"), null,
