@@ -45,6 +45,16 @@ namespace Idun {
 				kem_secret: kem_secret);
 		}
 
+		public static NgmIdentity load_or_generate (NgmIdentityStore store) throws Efni.Error {
+			NgmIdentity? existing = store.load ();
+			if (existing != null)
+				return existing;
+
+			var identity = generate ();
+			store.save (identity);
+			return identity;
+		}
+
 		public static NgmIdentity generate () {
 			var pk = new uint8[Kyber.PUBLIC_KEY_BYTES];
 			var sk = new uint8[Kyber.SECRET_KEY_BYTES];
@@ -52,6 +62,11 @@ namespace Idun {
 			return new NgmIdentity (export_private_key (generate_compact_key ()),
 				export_private_key (generate_compact_key ()),
 				new Bytes (pk), new Bytes (sk));
+		}
+
+		public static NgmIdentity from_keys (Bytes signing_key, Bytes prekey_key, Bytes kem_public,
+				Bytes kem_secret) {
+			return new NgmIdentity (signing_key, prekey_key, kem_public, kem_secret);
 		}
 
 		public uint8[] device_identity_data (uint32 tetra_version) {
@@ -189,6 +204,39 @@ namespace Idun {
 			unowned uint8[] data;
 			long size = sink.get_mem_data (out data);
 			return data[size - EC_POINT_LENGTH : size];
+		}
+	}
+
+	/**
+	 * Persists the NGM identity so it survives across runs. Reusing it keeps Idun a
+	 * single stable post-quantum device: a fresh identity on every run would force a
+	 * new registration and invalidate any Key-Transparency enrollment bound to the
+	 * previous keys.
+	 */
+	public sealed class NgmIdentityStore : IdentityStore {
+		public NgmIdentity? load () {
+			Plist? plist = read ();
+			if (plist == null)
+				return null;
+			try {
+				return NgmIdentity.from_keys (plist.get_bytes ("signingKey"), plist.get_bytes ("prekeyKey"),
+					plist.get_bytes ("kemPublic"), plist.get_bytes ("kemSecret"));
+			} catch (PlistError e) {
+				return null;
+			}
+		}
+
+		public void save (NgmIdentity identity) throws Efni.Error {
+			var plist = new Plist ();
+			plist.set_bytes ("signingKey", identity.signing_key);
+			plist.set_bytes ("prekeyKey", identity.prekey_key);
+			plist.set_bytes ("kemPublic", identity.kem_public);
+			plist.set_bytes ("kemSecret", identity.kem_secret);
+			write (plist);
+		}
+
+		protected override string filename () {
+			return "ngm-identity.plist";
 		}
 	}
 }
