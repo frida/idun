@@ -150,7 +150,7 @@ namespace Idun {
 					new Bytes (ngm.device_prekey_data (timestamp, TETRA_VERSION)));
 				data.set_integer ("public-message-identity-ngm-version", NGM_VERSION);
 				data.set_bytes ("kt-loggable-data",
-					new Bytes (ngm.kt_loggable_data (NGM_VERSION, KT_VERSION)));
+					new Bytes (ngm.kt_loggable_data (TETRA_VERSION, NGM_VERSION, KT_VERSION)));
 			}
 
 			return data;

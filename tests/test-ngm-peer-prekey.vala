@@ -21,7 +21,7 @@ namespace Idun.NgmPeerPrekeyTest {
 		try {
 			var identity = NgmIdentity.generate ();
 			var prekey = NgmPeerPrekey.parse (new Bytes (identity.device_prekey_data (1792659144.3, 15)),
-				new Bytes (identity.kt_loggable_data (13, 5)));
+				new Bytes (identity.kt_loggable_data (15, 13, 5)));
 
 			assert_true (new Bytes (prekey.ecdh_point.get_data ()).compare (
 				new Bytes (identity.prekey_compact_key ())) == 0);
