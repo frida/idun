@@ -15,6 +15,7 @@ namespace Idun {
 
 		private Soup.Session session = new Soup.Session ();
 		private AppleTrust trust = new AppleTrust ();
+		private DeviceDataStore device_data = new DeviceDataStore ();
 
 		private const string REGISTER_KEY = "id-register";
 		private const uint32 NGM_VERSION = 13;
@@ -22,16 +23,13 @@ namespace Idun {
 		private const uint32 TETRA_VERSION = 15;
 		private const string SERVICE = "com.apple.private.alloy.facetime.multi";
 		private const string USER_AGENT = "com.apple.invitation-registration [macOS,27.0,26A428,Mac17,2]";
-		private const string PROTOCOL_VERSION = "1640";
+		private const string PROTOCOL_VERSION = "27000000";
 
 		private const string[] ANISETTE_HEADERS = {
-			"X-MMe-Client-Info",
 			"X-Apple-I-MD",
 			"X-Apple-I-MD-M",
 			"X-Apple-I-MD-RINFO",
 			"X-Apple-I-MD-LU",
-			"X-Apple-I-SRL-NO",
-			"X-Mme-Device-Id",
 		};
 
 		public IdsRegistration (IdentityOracle oracle) {
@@ -50,14 +48,25 @@ namespace Idun {
 			ValidationData validation = yield oracle.produce_validation_data (cancellable);
 			IdsBag bag = yield IdsBag.fetch (session, cancellable);
 
-			Bytes body = gzip (build_request (auth.profile_id, handle, message, ngm, validation));
+			Bytes body = gzip (build_request (auth.profile_id, handle, message, ngm, validation,
+				device_data.load_or_create ()));
 			uint8[] token = push_token.get_data ();
+
+			Gee.Map<string, string> absinthe = yield oracle.fetch_absinthe_headers (
+				new Bytes (absinthe_message (token, body.get_data ())), body, cancellable);
 
 			var request = new Soup.Message ("POST", bag.lookup (REGISTER_KEY));
 			apply_headers (request, anisette, push_token);
 			sign (request, "push", null, null, push.private_key, certificate_der (push.push_certificate),
 				body.get_data (), token);
 			sign (request, "auth", "-0", auth.profile_id, auth.private_key, auth.certificate, body.get_data (), token);
+			var headers = request.request_headers;
+			foreach (var entry in absinthe.entries)
+				headers.replace (entry.key, entry.value);
+
+			string sdid = absinthe["absinthe-udid"];
+			headers.replace ("X-Apple-I-SDID", sdid);
+			headers.replace ("X-Apple-I-Stable-ID", @"$(sdid)_$(anisette["X-Apple-I-MD-LU"])");
 			request.set_request_body_from_bytes ("application/x-apple-plist", body);
 
 			Bytes response = yield send (request, cancellable);
@@ -68,18 +77,18 @@ namespace Idun {
 			var headers = message.request_headers;
 			headers.replace ("x-push-token", Base64.encode (push_token.get_data ()));
 			headers.replace ("x-protocol-version", PROTOCOL_VERSION);
+			headers.replace ("x-apple-req-reason", "v1:[3.1.1]");
 			headers.replace ("Content-Encoding", "gzip");
-			headers.replace ("Accept", "*/*");
+			headers.replace ("Accept-Encoding", "gzip");
+			headers.replace ("Accept-Language", "en-US,en;q=0.9");
 			headers.replace ("User-Agent", USER_AGENT);
-			headers.replace ("X-Apple-I-Client-Time", current_timestamp ());
-			headers.replace ("X-Apple-Locale", "en_US");
-			headers.replace ("X-Apple-I-TimeZone", "UTC");
 			foreach (unowned string name in ANISETTE_HEADERS)
 				headers.replace (name, anisette[name]);
+			headers.replace ("X-Apple-I-LDUID", anisette["X-Apple-I-MD-LU"]);
 		}
 
 		private static Bytes build_request (string profile_id, string handle, MessageIdentity message,
-				NgmIdentity? ngm, ValidationData validation) throws Efni.Error {
+				NgmIdentity? ngm, ValidationData validation, string device_unique_id) throws Efni.Error {
 			var capability = new PlistDict ();
 			capability.set_integer ("flags", 1);
 			capability.set_string ("name", "Invitation");
@@ -94,6 +103,10 @@ namespace Idun {
 
 			var user = new PlistDict ();
 			user.set_dict ("client-data", build_client_data (message, ngm));
+			if (ngm != null) {
+				user.set_bytes ("kt-loggable-data",
+					new Bytes (ngm.kt_loggable_data (TETRA_VERSION, NGM_VERSION, KT_VERSION)));
+			}
 			user.set_array ("uris", uris);
 			user.set_string ("user-id", profile_id);
 			var users = new PlistArray ();
@@ -112,6 +125,8 @@ namespace Idun {
 			request.set_string ("hardware-version", "Mac17,2");
 			request.set_string ("language", "en-US");
 			request.set_string ("os-version", "macOS,27.0,26A428");
+			request.set_dict ("private-device-data", build_private_device_data (device_unique_id));
+			request.set_integer ("retry-count", 0);
 			request.set_string ("software-version", "26A428");
 			request.set_bytes ("validation-data", validation.data);
 			request.set_array ("services", services);
@@ -149,10 +164,29 @@ namespace Idun {
 				data.set_bytes ("public-message-ngm-device-prekey-data-key",
 					new Bytes (ngm.device_prekey_data (timestamp, TETRA_VERSION)));
 				data.set_integer ("public-message-identity-ngm-version", NGM_VERSION);
-				data.set_bytes ("kt-loggable-data",
-					new Bytes (ngm.kt_loggable_data (TETRA_VERSION, NGM_VERSION, KT_VERSION)));
 			}
 
+			return data;
+		}
+
+		private static PlistDict build_private_device_data (string device_unique_id) {
+			var data = new PlistDict ();
+			data.set_string ("ap", "0");
+			data.set_string ("d", "%.7f".printf ((double) get_real_time () / 1000000.0 - 978307200.0));
+			data.set_integer ("dt", 1);
+			data.set_string ("gt", "0");
+			data.set_string ("h", "1");
+			data.set_string ("ktf", "1");
+			data.set_integer ("ktv", 122);
+			data.set_string ("m", "0");
+			data.set_string ("p", "0");
+			data.set_string ("pb", "26A428");
+			data.set_string ("pn", "macOS");
+			data.set_string ("pv", "27.0");
+			data.set_string ("s", "0");
+			data.set_string ("t", "0");
+			data.set_string ("u", device_unique_id);
+			data.set_string ("v", "1");
 			return data;
 		}
 
@@ -188,6 +222,21 @@ namespace Idun {
 			append_field (payload, body);
 			append_field (payload, token);
 			return payload.data;
+		}
+
+		private static uint8[] absinthe_message (uint8[] token, uint8[] body) {
+			var payload = new ByteArray ();
+			append_field (payload, REGISTER_KEY.data);
+			append_field (payload, new uint8[0]);
+			append_field (payload, body);
+			append_field (payload, token);
+
+			var checksum = new Checksum (ChecksumType.SHA256);
+			checksum.update (payload.data, payload.len);
+			var digest = new uint8[32];
+			size_t length = digest.length;
+			checksum.get_digest (digest, ref length);
+			return digest;
 		}
 
 		private static void append_field (ByteArray payload, uint8[] field) {
@@ -278,10 +327,6 @@ namespace Idun {
 				throw new Efni.Error.PROTOCOL ("Unable to compress IDS registration request: %s", e.message);
 			}
 		}
-
-		private static string current_timestamp () {
-			return new DateTime.now_utc ().format ("%Y-%m-%dT%H:%M:%SZ");
-		}
 	}
 
 	public sealed class RegisteredService : Object {
@@ -297,6 +342,33 @@ namespace Idun {
 
 		public RegisteredService (string handle, Bytes? certificate) {
 			Object (handle: handle, certificate: certificate);
+		}
+	}
+
+	/**
+	 * Persists the device's private-device-data unique identifier so Idun presents the
+	 * same device to the identity services on every run, keeping re-registration
+	 * idempotent instead of churning the account's device list.
+	 */
+	public sealed class DeviceDataStore : IdentityStore {
+		public string load_or_create () throws Efni.Error {
+			Plist? plist = read ();
+			if (plist != null) {
+				try {
+					return plist.get_string ("uniqueId");
+				} catch (PlistError e) {
+				}
+			}
+
+			string unique_id = GLib.Uuid.string_random ().up ();
+			var fresh = new Plist ();
+			fresh.set_string ("uniqueId", unique_id);
+			write (fresh);
+			return unique_id;
+		}
+
+		protected override string filename () {
+			return "device-data.plist";
 		}
 	}
 }
