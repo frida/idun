@@ -158,6 +158,10 @@ rpc.exports = {
             "X-Apple-I-SRL-NO": device.serialNumber().toString(),
             "X-Mme-Device-Id": device.uniqueDeviceIdentifier().toString(),
             "X-MMe-Client-Info": device.serverFriendlyDescription().toString(),
+            "X-Apple-I-MLB": device.MLBSerialNumber().toString(),
+            "X-Apple-I-ROM": device.ROMAddress().toString(),
+            "X-Apple-I-SDID": device.provisioningDeviceIdentifier().toString(),
+            "X-Apple-I-MD-EUID": getuid().toString(),
         };
     },
 
@@ -519,6 +523,7 @@ const objcMsgSend = new NativeFunction(Module.getGlobalExportByName("objc_msgSen
     ["pointer", "pointer", "pointer", "pointer", "pointer", "pointer"]);
 const objcMsgSendInfo = new NativeFunction(Module.getGlobalExportByName("objc_msgSend"), "pointer",
     ["pointer", "pointer", "pointer", "bool"]);
+const getuid = new NativeFunction(Module.getGlobalExportByName("getuid"), "uint", []);
 const imPrimaryQueue = new NativeFunction(Module.getGlobalExportByName("im_primary_queue"), "pointer", []);
 const dispatchAsync = new NativeFunction(Module.getGlobalExportByName("dispatch_async"), "void",
     ["pointer", "pointer"]);
