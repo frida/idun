@@ -179,4 +179,35 @@ namespace Idun {
 			Object (profile_id: profile_id, certificate: certificate, private_key: private_key);
 		}
 	}
+
+	/**
+	 * Persists the IDS authentication identity so it survives across runs. Reusing it
+	 * lets Idun skip the Grand Slam, delegate, and authentication-certificate exchanges
+	 * entirely, which is both faster and avoids re-prompting for a two-factor code.
+	 */
+	public sealed class IdsIdentityStore : IdentityStore {
+		public IdsIdentity? load () {
+			Plist? plist = read ();
+			if (plist == null)
+				return null;
+			try {
+				return new IdsIdentity (plist.get_string ("profileId"), plist.get_bytes ("certificate"),
+					plist.get_bytes ("privateKey"));
+			} catch (PlistError e) {
+				return null;
+			}
+		}
+
+		public void save (IdsIdentity identity) throws Efni.Error {
+			var plist = new Plist ();
+			plist.set_string ("profileId", identity.profile_id);
+			plist.set_bytes ("certificate", identity.certificate);
+			plist.set_bytes ("privateKey", identity.private_key);
+			write (plist);
+		}
+
+		protected override string filename () {
+			return "ids-identity.plist";
+		}
+	}
 }

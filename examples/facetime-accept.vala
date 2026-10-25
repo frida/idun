@@ -20,16 +20,25 @@ namespace Idun.Examples {
 		try {
 			var oracle = new IdentityOracle (base_url);
 
-			string? password = Environment.get_variable ("IDUN_APPLE_PASSWORD");
-			if (password == null) {
-				printerr ("Set IDUN_APPLE_PASSWORD before running.\n");
-				return 1;
-			}
+			var ids_store = new IdsIdentityStore ();
+			IdsIdentity? identity = ids_store.load ();
+			if (identity == null) {
+				string? password = Environment.get_variable ("IDUN_APPLE_PASSWORD");
+				if (password == null) {
+					printerr ("Set IDUN_APPLE_PASSWORD before running.\n");
+					return 1;
+				}
 
-			var grand_slam = new GrandSlam (oracle);
-			GrandSlamIdentity account = yield grand_slam.authenticate (apple_id, password, new ConsoleTwoFactor ());
-			IdsDelegate delegation = yield new IdsDelegateAuth (oracle).authenticate (apple_id, account);
-			IdsIdentity identity = yield new IdsAuthCert (oracle).authenticate (delegation);
+				var grand_slam = new GrandSlam (oracle);
+				GrandSlamIdentity account = yield grand_slam.authenticate (apple_id, password,
+					new ConsoleTwoFactor ());
+				IdsDelegate delegation = yield new IdsDelegateAuth (oracle).authenticate (apple_id, account);
+				identity = yield new IdsAuthCert (oracle).authenticate (delegation);
+				ids_store.save (identity);
+				print ("authenticated with Apple and cached the IDS identity\n");
+			} else {
+				print ("reusing the persisted IDS identity\n");
+			}
 
 			ApnsIdentity push = yield new ApnsActivation (oracle, new ApnsIdentityStore ()).activate ();
 			var courier = new ApnsCourier (push, new ApnsTokenStore ());
