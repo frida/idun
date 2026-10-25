@@ -15,6 +15,7 @@ AGENT = Path(__file__).parent / "idun-mac-agent.js"
 HOST = Path(__file__).parent / "idun-mac-host.py"
 PYTHON = "/usr/bin/python3"
 AKD = "/System/Library/PrivateFrameworks/AuthKit.framework/Versions/A/Support/akd"
+IDS = "identityservicesd"
 
 
 def main():
@@ -42,9 +43,11 @@ class Oracle:
         self._agent = AGENT.read_text()
         self._validation_lock = threading.Lock()
         self._akd_lock = threading.Lock()
+        self._ids_lock = threading.Lock()
         self._host_process = None
         self._host = None
         self._akd = None
+        self._ids = None
 
     def start(self):
         device = frida.get_device_manager().add_remote_device(self._frida_server)
@@ -73,6 +76,18 @@ class Oracle:
             self._akd = self._load(device, akd.pid)
         return self._akd
 
+    def absinthe(self, request):
+        with self._ids_lock:
+            return self._ensure_ids().exports_sync.absinthe_headers(request["digest"], request["body"])
+
+    def _ensure_ids(self):
+        if self._ids is None:
+            device = frida.get_device_manager().add_remote_device(self._akd_frida_server)
+            ids = next(p for p in device.enumerate_processes(scope="full")
+                       if p.name == IDS and p.parameters.get("user") != "root")
+            self._ids = self._load(device, ids.pid)
+        return self._ids
+
     def device_info(self):
         return self._host.exports_sync.device_info()
 
@@ -96,6 +111,7 @@ def make_handler(oracle):
     }
     post_routes = {
         "/fairplay-sign": lambda body: oracle.fairplay_sign(body),
+        "/absinthe": lambda body: oracle.absinthe(json.loads(body)),
         "/validation/begin": lambda body: oracle.validation_begin(),
         "/validation/continue": lambda body: oracle.validation_continue(json.loads(body)),
     }

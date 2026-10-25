@@ -2,8 +2,11 @@ import ObjC from "frida-objc-bridge";
 
 const {
     NSBundle, NSData, NSString, NSPropertyListSerialization,
-    IDSValidationQueue, AKAnisetteProvisioningController, AKAttestationRequestData, AKDevice,
+    IDSValidationQueue, IDSValidationSession, IDSBaseMessageSigningData,
+    AKAnisetteProvisioningController, AKAttestationRequestData, AKDevice,
 } = ObjC.classes;
+
+const absintheSignings: any[] = [];
 
 const VALIDATION_SUBSYSTEM = "com.apple.private.alloy.facetime.multi";
 const NS_PROPERTY_LIST_XML = 100;
@@ -166,6 +169,49 @@ rpc.exports = {
         if (attestation.handle.isNull())
             throw new Error(new ObjC.Object(error.readPointer()).toString());
         return dictionaryToObject(attestation.allHeaders());
+    },
+
+    absintheHeaders(digestBase64: string, bodyBase64: string): Promise<Record<string, string>> {
+        return new Promise((resolve, reject) => {
+            const queue = imPrimaryQueue();
+            const digest = NSData.alloc().initWithBase64EncodedString_options_(digestBase64, 0);
+            const body = NSData.alloc().initWithBase64EncodedString_options_(bodyBase64, 0);
+            const retained: any[] = [digest, body];
+            absintheSignings.push(retained);
+
+            const onHeaders = new ObjC.Block({
+                retType: "void",
+                argTypes: ["object", "object"],
+                implementation: (headers: ObjC.Object | null, error: ObjC.Object | null) => {
+                    if (headers === null || headers.handle.isNull())
+                        reject(new Error(error !== null ? error.description().toString() : "signing produced no headers"));
+                    else
+                        resolve(dictionaryToObject(headers));
+                },
+            });
+            const onSession = new ObjC.Block({
+                retType: "void",
+                argTypes: ["object", "object"],
+                implementation: (session: ObjC.Object | null, error: ObjC.Object | null) => {
+                    if (session === null || session.handle.isNull()) {
+                        reject(new Error(error !== null ? error.description().toString() : "could not establish a validation session"));
+                        return;
+                    }
+                    const signingData = IDSBaseMessageSigningData.alloc()
+                        .initWithSHA256Digest_requestBody_serverTimestamp_includeIcloudBAA_(digest, body, Date.now(), 1);
+                    retained.push(signingData);
+                    session.headersBySigningData_completion_(signingData, onHeaders);
+                },
+            });
+            const launch = new ObjC.Block({
+                retType: "void",
+                argTypes: [],
+                implementation: () => IDSValidationSession.absintheValidationSessionOnQueue_withCompletion_(queue, onSession),
+            });
+            retained.push(onHeaders, onSession, launch);
+
+            dispatchAsync(queue, launch.handle);
+        });
     },
 };
 

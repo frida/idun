@@ -58,6 +58,29 @@ namespace Idun {
 			return yield fetch_headers ("/baa-headers", cancellable);
 		}
 
+		public async Gee.Map<string, string> fetch_absinthe_headers (Bytes digest, Bytes body,
+				Cancellable? cancellable = null) throws Efni.Error, IOError {
+			var builder = new Json.Builder ();
+			builder.begin_object ();
+			builder.set_member_name ("digest");
+			builder.add_string_value (Base64.encode (digest.get_data ()));
+			builder.set_member_name ("body");
+			builder.add_string_value (Base64.encode (body.get_data ()));
+			builder.end_object ();
+
+			var generator = new Json.Generator ();
+			generator.set_root (builder.get_root ());
+
+			var message = new Soup.Message ("POST", @"$base_url/absinthe");
+			message.set_request_body_from_bytes ("application/json", new Bytes (generator.to_data (null).data));
+			Json.Object obj = yield send (message, cancellable);
+
+			var result = new Gee.HashMap<string, string> ();
+			foreach (unowned string name in obj.get_members ())
+				result[name] = node_to_string (obj.get_member (name));
+			return result;
+		}
+
 		private async Gee.Map<string, string> fetch_headers (string path, Cancellable? cancellable)
 				throws Efni.Error, IOError {
 			Json.Object obj = yield send (new Soup.Message ("GET", @"$base_url$path"), cancellable);
