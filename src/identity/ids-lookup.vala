@@ -19,16 +19,6 @@ namespace Idun {
 		private const string USER_AGENT = "com.apple.madrid-lookup [macOS,27.0,26A428,Mac17,2]";
 		private const string PROTOCOL_VERSION = "27000000";
 
-		private const string[] ANISETTE_HEADERS = {
-			"X-MMe-Client-Info",
-			"X-Apple-I-MD",
-			"X-Apple-I-MD-M",
-			"X-Apple-I-MD-RINFO",
-			"X-Apple-I-MD-LU",
-			"X-Apple-I-SRL-NO",
-			"X-Mme-Device-Id",
-		};
-
 		public IdsLookup (IdentityOracle oracle) {
 			Object (oracle: oracle);
 		}
@@ -40,7 +30,6 @@ namespace Idun {
 		public async Gee.MultiMap<string, PeerIdentity> query (IdsIdentity identity, Bytes registration_certificate,
 				Bytes push_token, string self_handle, string[] handles, Cancellable? cancellable = null)
 				throws Efni.Error, IOError {
-			Gee.Map<string, string> anisette = yield oracle.fetch_anisette (cancellable);
 			Gee.Map<string, string> attestation = yield oracle.fetch_baa_headers (cancellable);
 			IdsBag bag = yield IdsBag.fetch (session, cancellable);
 
@@ -48,31 +37,25 @@ namespace Idun {
 			uint8[] token = push_token.get_data ();
 
 			var message = new Soup.Message ("POST", bag.lookup (QUERY_KEY));
-			apply_headers (message, anisette, attestation, self_handle, push_token);
-			sign (message, identity.profile_id, identity.private_key, registration_certificate, body.get_data (),
-				token);
+			apply_headers (message, attestation, self_handle, push_token);
+			sign (message, identity.private_key, registration_certificate, body.get_data (), token);
 			message.set_request_body_from_bytes ("application/x-apple-plist", body);
 
 			Bytes response = yield send (message, cancellable);
 			return parse_results (response);
 		}
 
-		private static void apply_headers (Soup.Message message, Gee.Map<string, string> anisette,
-				Gee.Map<string, string> attestation, string self_handle, Bytes push_token) {
+		private static void apply_headers (Soup.Message message, Gee.Map<string, string> attestation,
+				string self_handle, Bytes push_token) {
 			var headers = message.request_headers;
 			headers.replace ("x-id-self-uri", self_handle);
 			headers.replace ("x-push-token", Base64.encode (push_token.get_data ()));
 			headers.replace ("x-protocol-version", PROTOCOL_VERSION);
-			headers.replace ("x-apple-apns-dual-mode-delivery-type", "2");
 			headers.replace ("x-apple-baa-header-source", "1");
 			headers.replace ("Content-Encoding", "gzip");
-			headers.replace ("Accept", "*/*");
+			headers.replace ("Accept-Encoding", "gzip");
+			headers.replace ("Accept-Language", "en-US,en;q=0.9");
 			headers.replace ("User-Agent", USER_AGENT);
-			headers.replace ("X-Apple-I-Client-Time", current_timestamp ());
-			headers.replace ("X-Apple-Locale", "en_US");
-			headers.replace ("X-Apple-I-TimeZone", "UTC");
-			foreach (unowned string name in ANISETTE_HEADERS)
-				headers.replace (name, anisette[name]);
 			foreach (var entry in attestation.entries)
 				headers.replace (entry.key, entry.value);
 		}
@@ -87,7 +70,7 @@ namespace Idun {
 			return new Bytes (request.to_xml ().data);
 		}
 
-		private static void sign (Soup.Message message, string user_id, Bytes key_pem, Bytes certificate,
+		private static void sign (Soup.Message message, Bytes key_pem, Bytes certificate,
 				uint8[] body, uint8[] token) throws Efni.Error {
 			uint8[] nonce = make_nonce ();
 			uint8[] raw = rsa_sha1 (key_pem, signing_payload (nonce, body, token));
@@ -97,7 +80,6 @@ namespace Idun {
 			Memory.copy ((uint8*) signature + 2, raw, raw.length);
 
 			var headers = message.request_headers;
-			headers.replace ("x-id-user-id", user_id);
 			headers.replace ("x-id-nonce", Base64.encode (nonce));
 			headers.replace ("x-id-sig", Base64.encode (signature));
 			headers.replace ("x-id-cert", Base64.encode (certificate.get_data ()));
@@ -167,7 +149,7 @@ namespace Idun {
 							continue;
 						peers.set (uri, new PeerIdentity (uri, identity.get_bytes ("push-token"),
 							client_data.get_bytes ("public-message-identity-key"),
-							parse_ngm_prekey (client_data)));
+							parse_ngm_prekey (client_data, identity)));
 					}
 				}
 			} catch (PlistError e) {
@@ -176,14 +158,14 @@ namespace Idun {
 			return peers;
 		}
 
-		private static NgmPeerPrekey? parse_ngm_prekey (PlistDict client_data) {
+		private static NgmPeerPrekey? parse_ngm_prekey (PlistDict client_data, PlistDict identity) {
 			if (!client_data.has ("public-message-ngm-device-prekey-data-key") ||
-					!client_data.has ("kt-loggable-data"))
+					!identity.has ("kt-loggable-data"))
 				return null;
 			try {
 				return NgmPeerPrekey.parse (
 					client_data.get_bytes ("public-message-ngm-device-prekey-data-key"),
-					client_data.get_bytes ("kt-loggable-data"));
+					identity.get_bytes ("kt-loggable-data"));
 			} catch (GLib.Error e) {
 				return null;
 			}
@@ -210,10 +192,6 @@ namespace Idun {
 			} catch (GLib.Error e) {
 				throw new Efni.Error.PROTOCOL ("Unable to compress IDS lookup request: %s", e.message);
 			}
-		}
-
-		private static string current_timestamp () {
-			return new DateTime.now_utc ().format ("%Y-%m-%dT%H:%M:%SZ");
 		}
 	}
 
