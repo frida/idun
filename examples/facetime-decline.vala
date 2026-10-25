@@ -26,17 +26,18 @@ namespace Idun.Examples {
 				return 1;
 			}
 
+			ApnsIdentity push = yield new ApnsActivation (oracle, new ApnsIdentityStore ()).activate ();
+			var courier = new ApnsCourier (push, new ApnsTokenStore ());
+			yield courier.open ();
+
 			var grand_slam = new GrandSlam (oracle);
-			GrandSlamIdentity account = yield grand_slam.authenticate (apple_id, password, new ConsoleTwoFactor ());
+			GrandSlamIdentity account = yield grand_slam.authenticate (apple_id, password, courier.push_token,
+				new ConsoleTwoFactor ());
 			print ("signed in: %s\n", account.adsid);
 
 			IdsDelegate delegation = yield new IdsDelegateAuth (oracle).authenticate (apple_id, account);
 			IdsIdentity identity = yield new IdsAuthCert (oracle).authenticate (delegation);
 			print ("ids identity: profile %s\n", identity.profile_id);
-
-			ApnsIdentity push = yield new ApnsActivation (oracle, new ApnsIdentityStore ()).activate ();
-			var courier = new ApnsCourier (push, new ApnsTokenStore ());
-			yield courier.open ();
 			print ("courier token: %u bytes\n", courier.push_token.length);
 
 			var message = MessageIdentity.load_or_generate (new MessageIdentityStore ());

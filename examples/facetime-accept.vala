@@ -20,6 +20,10 @@ namespace Idun.Examples {
 		try {
 			var oracle = new IdentityOracle (base_url);
 
+			ApnsIdentity push = yield new ApnsActivation (oracle, new ApnsIdentityStore ()).activate ();
+			var courier = new ApnsCourier (push, new ApnsTokenStore ());
+			yield courier.open ();
+
 			var ids_store = new IdsIdentityStore ();
 			IdsIdentity? identity = ids_store.load ();
 			if (identity == null) {
@@ -31,7 +35,7 @@ namespace Idun.Examples {
 
 				var grand_slam = new GrandSlam (oracle);
 				GrandSlamIdentity account = yield grand_slam.authenticate (apple_id, password,
-					new ConsoleTwoFactor ());
+					courier.push_token, new ConsoleTwoFactor ());
 				IdsDelegate delegation = yield new IdsDelegateAuth (oracle).authenticate (apple_id, account);
 				identity = yield new IdsAuthCert (oracle).authenticate (delegation);
 				ids_store.save (identity);
@@ -39,10 +43,6 @@ namespace Idun.Examples {
 			} else {
 				print ("reusing the persisted IDS identity\n");
 			}
-
-			ApnsIdentity push = yield new ApnsActivation (oracle, new ApnsIdentityStore ()).activate ();
-			var courier = new ApnsCourier (push, new ApnsTokenStore ());
-			yield courier.open ();
 
 			var message = MessageIdentity.load_or_generate (new MessageIdentityStore ());
 			var crypto = new PairCrypto (message);
@@ -55,7 +55,7 @@ namespace Idun.Examples {
 			yield endpoint.listen ();
 
 			endpoint.notification_received.connect ((notification) => {
-				inspect (crypto, notification);
+				inspect (notification);
 			});
 			yield endpoint.run ();
 		} catch (GLib.Error e) {
@@ -65,41 +65,17 @@ namespace Idun.Examples {
 		return 0;
 	}
 
-	private void inspect (PairCrypto crypto, Variant notification) {
-		try {
-			Variant? payload = notification.lookup_value ("payload", new VariantType ("a{sv}"));
-			if (payload == null)
-				return;
-			Variant? type = payload.lookup_value ("c", VariantType.INT64);
-			Variant? envelope = payload.lookup_value ("E", VariantType.STRING);
-			if (type != null)
-				print ("notification c=%" + int64.FORMAT_MODIFIER + "d E=%s\n", type.get_int64 (),
-					envelope != null ? envelope.get_string () : "(none)");
-			if (type == null || (type.get_int64 () != 210 && type.get_int64 () != 207))
-				return;
-
-			Variant? sealed = payload.lookup_value ("P", new VariantType ("ay"));
-			Variant? sender = payload.lookup_value ("sP", VariantType.STRING);
-			if (sealed == null || sender == null)
-				return;
-
-			uint8[] decrypted = crypto.decrypt (sealed.get_data_as_bytes ());
-			if (type.get_int64 () == 207) {
-				string path = "/tmp/idun-ft-207.bin";
-				FileUtils.set_data (path, decrypted);
-				print ("c=207 from %s decrypted %d bytes -> %s\n",
-					sender.get_string (), decrypted.length, path);
-				return;
-			}
-
-			var plist = new Plist.from_data (decrypted);
-			print ("\ninvite from %s decrypted; keys:\n", sender.get_string ());
-			foreach (string key in plist.keys)
-				print ("  %s\n", key);
-			print ("%s\n", plist.to_xml ());
-		} catch (GLib.Error e) {
-			printerr ("inspect failed: %s\n", e.message);
-		}
+	private void inspect (Variant notification) {
+		Variant? payload = notification.lookup_value ("payload", new VariantType ("a{sv}"));
+		if (payload == null)
+			return;
+		Variant? type = payload.lookup_value ("c", VariantType.INT64);
+		Variant? envelope = payload.lookup_value ("E", VariantType.STRING);
+		Variant? sender = payload.lookup_value ("sP", VariantType.STRING);
+		print ("notification c=%" + int64.FORMAT_MODIFIER + "d E=%s sP=%s\n",
+			type != null ? type.get_int64 () : -1,
+			envelope != null ? envelope.get_string () : "(none)",
+			sender != null ? sender.get_string () : "(none)");
 	}
 
 	private sealed class ConsoleTwoFactor : Object, TwoFactorProvider {

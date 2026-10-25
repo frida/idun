@@ -34,25 +34,74 @@ namespace Idun {
 			trust.guard (session);
 		}
 
-		public async GrandSlamIdentity authenticate (string username, string password,
+		public async GrandSlamIdentity authenticate (string username, string password, Bytes push_token,
 				TwoFactorProvider? two_factor = null, Cancellable? cancellable = null) throws Efni.Error, IOError {
-			Gee.Map<string, string> anisette = yield oracle.fetch_anisette (cancellable);
-			PlistDict spd = yield run_login (username, password, anisette, cancellable);
+			Gee.Map<string, string> device = yield fetch_device (push_token, cancellable);
+			yield fetch_auth_mode (username, device, cancellable);
+			PlistDict spd = yield run_login (username, password, device, cancellable);
 
 			if (requires_two_factor (spd)) {
 				if (two_factor == null)
 					throw new Efni.Error.NOT_SUPPORTED ("Two-factor authentication is required");
-				yield elevate_with_two_factor (spd, two_factor, anisette, cancellable);
-				anisette = yield oracle.fetch_anisette (cancellable);
-				spd = yield run_login (username, password, anisette, cancellable);
+				yield elevate_with_two_factor (spd, two_factor, device, cancellable);
+				device = yield fetch_device (push_token, cancellable);
+				spd = yield run_login (username, password, device, cancellable);
 			}
 
 			return extract_identity (spd);
 		}
 
+		private static string current_timestamp () {
+			return new DateTime.now_utc ().format ("%Y-%m-%dT%H:%M:%SZ");
+		}
+
+		private async Gee.Map<string, string> fetch_device (Bytes push_token, Cancellable? cancellable)
+				throws Efni.Error, IOError {
+			Gee.Map<string, string> device = yield oracle.fetch_anisette (cancellable);
+			Gee.Map<string, string> attestation = yield oracle.fetch_baa_headers (cancellable);
+			foreach (var entry in attestation.entries)
+				device[entry.key] = entry.value;
+			device["ptkn"] = upper_hex (push_token.get_data ());
+			return device;
+		}
+
+		private static string upper_hex (uint8[] data) {
+			var builder = new StringBuilder ();
+			foreach (uint8 b in data)
+				builder.append_printf ("%02X", b);
+			return builder.str;
+		}
+
+		private async void fetch_auth_mode (string username, Gee.Map<string, string> device,
+				Cancellable? cancellable) throws Efni.Error, IOError {
+			var message = new Soup.Message ("GET", SERVICE_URL + "/fetchAuthMode");
+			var headers = message.request_headers;
+			headers.replace ("X-Apple-AK-Context-Type", "facetime");
+			headers.replace ("X-Apple-AK-DataRecoveryService-Status", "1");
+			headers.replace ("X-Apple-Client-App-Name", "FaceTime");
+			headers.replace ("X-Apple-I-AppleID", username);
+			headers.replace ("X-Apple-I-Client-Bundle-Id", "com.apple.FaceTime");
+			headers.replace ("X-Apple-I-Device-Configuration-Mode", "0");
+			headers.replace ("X-Apple-I-DeviceUserMode", "0");
+			headers.replace ("X-Apple-I-Flow-Id", Uuid.string_random ().up ());
+			headers.replace ("X-Apple-I-LiveOnServerBackoffOptIn", "0");
+			headers.replace ("X-Apple-I-Service-Type", "facetime");
+			headers.replace ("X-Apple-I-Locale", "en_US@rg=nozzzz");
+			headers.replace ("X-Apple-I-MLB", device["X-Apple-I-MLB"]);
+			headers.replace ("X-Apple-I-ROM", device["X-Apple-I-ROM"]);
+			headers.replace ("X-Apple-I-SRL-NO", device["X-Apple-I-SRL-NO"]);
+			headers.replace ("X-Apple-I-Provisioning-Device-Id", device["X-Apple-I-SDID"]);
+			headers.replace ("X-Apple-I-TimeZone", "GMT");
+			headers.replace ("X-Apple-I-TimeZone-Offset", "0");
+			headers.replace ("X-Apple-Requested-Partition", "0");
+			headers.replace ("X-MMe-Client-Info", device["X-MMe-Client-Info"]);
+			headers.replace ("X-Mme-Device-Id", device["X-Mme-Device-Id"]);
+			yield send_raw (message, cancellable);
+		}
+
 		private static bool requires_two_factor (PlistDict spd) throws Efni.Error {
 			try {
-				return spd.has ("au") && spd.get_string ("au") == "trustedDeviceSecondaryAuth";
+				return spd.has ("status-code") && spd.get_integer ("status-code") == 409;
 			} catch (PlistError e) {
 				throw new Efni.Error.PROTOCOL ("Malformed Grand Slam login response: %s", e.message);
 			}
@@ -219,8 +268,7 @@ namespace Idun {
 
 			Bytes response = yield send_raw (message, cancellable);
 			try {
-				PlistDict status = new Plist.from_data (response.get_data ()).get_dict ("Status");
-				int64 code_result = status.get_integer ("ec");
+				int64 code_result = new Plist.from_data (response.get_data ()).get_integer ("ec");
 				if (code_result != 0) {
 					throw new Efni.Error.PROTOCOL ("Two-factor validation failed: %" + int64.FORMAT_MODIFIER + "d",
 						code_result);
@@ -242,7 +290,7 @@ namespace Idun {
 			message.request_headers.replace ("X-Xcode-Version", "11.2 (11B41)");
 		}
 
-		private async PlistDict exchange (PlistDict request, Gee.Map<string, string> anisette,
+		private async PlistDict exchange (PlistDict request, Gee.Map<string, string> device,
 				Cancellable? cancellable) throws Efni.Error, IOError {
 			var header = new PlistDict ();
 			header.set_string ("Version", "1.0.1");
@@ -252,9 +300,27 @@ namespace Idun {
 
 			var message = new Soup.Message ("POST", SERVICE_URL);
 			message.set_request_body_from_bytes ("text/x-xml-plist", new Bytes (envelope.to_xml ().data));
-			message.request_headers.replace ("Accept", "*/*");
-			message.request_headers.replace ("User-Agent", anisette["X-MMe-Client-Info"]);
-			message.request_headers.replace ("X-Mme-Client-Info", anisette["X-MMe-Client-Info"]);
+			var headers = message.request_headers;
+			headers.replace ("User-Agent", device["X-MMe-Client-Info"]);
+			headers.replace ("X-MMe-Client-Info", device["X-MMe-Client-Info"]);
+			headers.replace ("X-Mme-Device-Id", device["X-Mme-Device-Id"]);
+			headers.replace ("X-Apple-AK-Context-Type", "facetime");
+			headers.replace ("X-Apple-Client-App-Name", "FaceTime");
+			headers.replace ("X-Apple-I-Auth-Type", "2");
+			headers.replace ("X-Apple-I-Client-Bundle-Id", "com.apple.FaceTime");
+			headers.replace ("X-Apple-I-MD", device["X-Apple-I-MD"]);
+			headers.replace ("X-Apple-I-MD-M", device["X-Apple-I-MD-M"]);
+			headers.replace ("X-Apple-I-MD-RINFO", device["X-Apple-I-MD-RINFO"]);
+			headers.replace ("X-Apple-I-MD-LU", device["X-Apple-I-MD-LU"]);
+			headers.replace ("X-Apple-I-SDID", device["X-Apple-I-SDID"]);
+			headers.replace ("X-Apple-I-Stable-ID", device["X-Apple-I-Stable-ID"]);
+			headers.replace ("X-Apple-I-LDUID", device["X-Apple-I-LDUID"]);
+			headers.replace ("x-apple-i-device-type", device["x-apple-i-device-type"]);
+			headers.replace ("x-apple-baa-cert", device["x-apple-baa-cert"]);
+			headers.replace ("x-apple-baa-sig", device["x-apple-baa-sig"]);
+			headers.replace ("x-apple-baa-sig-alt", device["x-apple-baa-sig-alt"]);
+			headers.replace ("x-apple-baa-time", device["x-apple-baa-time"]);
+			headers.replace ("x-apple-baa-version", device["x-apple-baa-version"]);
 
 			Bytes response = yield send_raw (message, cancellable);
 			try {
@@ -280,16 +346,58 @@ namespace Idun {
 			}
 		}
 
-		private PlistDict build_cpd (Gee.Map<string, string> anisette) {
+		private PlistDict build_cpd (Gee.Map<string, string> device) {
+			string lduid = device["X-Apple-I-LDUID"];
+			string sdid = device["X-Apple-I-SDID"];
+			string stable_id = device["X-Apple-I-Stable-ID"];
+
 			var cpd = new PlistDict ();
-			foreach (var entry in anisette.entries)
-				cpd.set_string (entry.key, entry.value);
-			cpd.set_integer ("X-Apple-I-MD-RINFO", int64.parse (anisette["X-Apple-I-MD-RINFO"]));
+			cpd.set_string ("X-Apple-I-Client-Time", current_timestamp ());
+			cpd.set_string ("X-Apple-I-Device-Configuration-Mode", "0");
+			cpd.set_string ("X-Apple-I-Flow-Id", Uuid.string_random ().up ());
+			cpd.set_string ("X-Apple-I-LDUID", lduid);
+			cpd.set_string ("X-Apple-I-MD", device["X-Apple-I-MD"]);
+			cpd.set_string ("X-Apple-I-MD-EUID", device["X-Apple-I-MD-EUID"]);
+			cpd.set_string ("X-Apple-I-MD-LU", device["X-Apple-I-MD-LU"]);
+			cpd.set_string ("X-Apple-I-MD-M", device["X-Apple-I-MD-M"]);
+			cpd.set_string ("X-Apple-I-MD-RINFO", device["X-Apple-I-MD-RINFO"]);
+			cpd.set_string ("X-Apple-I-MLB", device["X-Apple-I-MLB"]);
+			cpd.set_string ("X-Apple-I-ROM", device["X-Apple-I-ROM"]);
+			cpd.set_string ("X-Apple-I-Request-UUID", Uuid.string_random ().up ());
+			cpd.set_string ("X-Apple-I-SDID", sdid);
+			cpd.set_string ("X-Apple-I-SRL-NO", device["X-Apple-I-SRL-NO"]);
+			cpd.set_string ("X-Apple-I-Stable-ID", stable_id);
+			cpd.set_boolean ("X-Apple-Offer-Security-Upgrade", true);
+			cpd.set_string ("X-Apple-Requested-Partition", "0");
+			cpd.set_string ("X-Apple-Security-Upgrade-Context", "com.apple.authkit.generic");
+			cpd.set_string ("X-Mme-Device-Id", device["X-Mme-Device-Id"]);
+			cpd.set_integer ("at", 2);
 			cpd.set_boolean ("bootstrap", true);
+			cpd.set_string ("capp", "FaceTime");
+			cpd.set_string ("cbid", "com.apple.FaceTime");
+			cpd.set_boolean ("ckgen", true);
+			cpd.set_string ("cou", "NO");
+			cpd.set_string ("dc", "9");
+			cpd.set_string ("dec", "unknown");
+			cpd.set_boolean ("fcd", true);
+			cpd.set_boolean ("generatePrk", true);
+			cpd.set_boolean ("icdrsDisabled", false);
 			cpd.set_boolean ("icscrec", true);
+			cpd.set_string ("lduid", lduid);
+			cpd.set_string ("loc", "en_US@rg=nozzzz");
 			cpd.set_boolean ("pbe", false);
 			cpd.set_boolean ("prkgen", true);
-			cpd.set_string ("svct", "iCloud");
+			cpd.set_string ("ptkn", device["ptkn"]);
+			cpd.set_string ("sdid", sdid);
+			cpd.set_string ("stableId", stable_id);
+			cpd.set_string ("svct", "facetime");
+			cpd.set_boolean ("webAccessEnabled", false);
+			cpd.set_string ("x-apple-baa-cert", device["x-apple-baa-cert"]);
+			cpd.set_string ("x-apple-baa-sig", device["x-apple-baa-sig"]);
+			cpd.set_string ("x-apple-baa-sig-alt", device["x-apple-baa-sig-alt"]);
+			cpd.set_string ("x-apple-baa-time", device["x-apple-baa-time"]);
+			cpd.set_string ("x-apple-baa-version", device["x-apple-baa-version"]);
+			cpd.set_string ("x-apple-i-device-type", device["x-apple-i-device-type"]);
 			return cpd;
 		}
 
