@@ -17,4 +17,8 @@ if host_os != 'macos'
     vala_args: ['--pkg=gio-2.0', '--pkg=gee-0.8', platform_vala_args],
     dependencies: [idun_dep, json_glib_dep],
   )
+  executable('facetime-decrypt', 'facetime-decrypt.vala',
+    vala_args: ['--pkg=gio-2.0', '--pkg=gee-0.8', platform_vala_args],
+    dependencies: [idun_dep, json_glib_dep],
+  )
 endif
