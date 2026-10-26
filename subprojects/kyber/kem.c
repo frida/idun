@@ -118,10 +118,16 @@ int crypto_kem_dec(uint8_t *ss,
   /* overwrite coins in kr with H(c) */
   hash_h(kr+KYBER_SYMBYTES, ct, KYBER_CIPHERTEXTBYTES);
 
-  /* Overwrite pre-k with z on re-encryption failure */
-  cmov(kr, sk+KYBER_SECRETKEYBYTES-KYBER_SYMBYTES, KYBER_SYMBYTES, fail);
-
-  /* hash concatenation of pre-k and H(c) to k */
-  kdf(ss, kr, 2*KYBER_SYMBYTES);
+  /* ML-KEM (FIPS-203): shared secret is K-bar directly (kr[0:32]) on success;
+     on implicit rejection, J(z || c) = SHAKE256(z || ciphertext). */
+  {
+    uint8_t reject[KYBER_SYMBYTES];
+    uint8_t zc[KYBER_SYMBYTES + KYBER_CIPHERTEXTBYTES];
+    for(i=0;i<KYBER_SYMBYTES;i++) zc[i] = sk[KYBER_SECRETKEYBYTES-KYBER_SYMBYTES+i];
+    for(i=0;i<KYBER_CIPHERTEXTBYTES;i++) zc[KYBER_SYMBYTES+i] = ct[i];
+    shake256(reject, KYBER_SYMBYTES, zc, sizeof(zc));
+    for(i=0;i<KYBER_SYMBYTES;i++) ss[i] = kr[i];
+    cmov(ss, reject, KYBER_SYMBYTES, fail);
+  }
   return 0;
 }
