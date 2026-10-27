@@ -6,6 +6,73 @@ namespace Idun.FaceTimeMediaTest {
 		GLib.Test.add_func ("/FaceTimeMedia/wraps-and-unwraps-roundtrip", wraps_and_unwraps_roundtrip);
 		GLib.Test.add_func ("/FaceTimeMedia/derives-stream-key", derives_stream_key);
 		GLib.Test.add_func ("/FaceTimeMedia/derives-control-key", derives_control_key);
+		GLib.Test.add_func ("/FaceTimeMedia/builds-participant-data", builds_participant_data);
+	}
+
+	private void builds_participant_data () {
+		try {
+			var data = new FaceTimeParticipantData ();
+			data.session_uuid = "2CC7DA48-8AA7-41EA-9662-3F0027EFEC63";
+			data.audio_ssrc = 0x12345678;
+			data.ntp_time = 17188950392802533376U;
+			data.device_type = "Mac17,2";
+			data.framework_version = "2235.63.5.2";
+			data.os_version = "26A428";
+			data.call_id = 457613262;
+
+			var offer = new Plist.from_data (data.build ());
+			assert_true (offer.get_string ("vcSessionParticipantKeyUUID") == data.session_uuid);
+
+			assert_true (stream_group_ssrc (offer.get_bytes ("b2n").get_data ()) == data.audio_ssrc);
+
+			uint8[] media_blob = inflate (offer.get_bytes ("vcSessionParticipantKeyMediaBlob"));
+			assert_true (audio_settings_ssrc (media_blob) == data.audio_ssrc);
+		} catch (GLib.Error e) {
+			assert_not_reached ();
+		}
+	}
+
+	private uint32 stream_group_ssrc (uint8[] negotiation) throws Efni.Error {
+		uint8[] group = field_bytes (negotiation, 7);
+		uint8[] stream = field_bytes (group, 3);
+		return (uint32) field_varint (stream, 4);
+	}
+
+	private uint32 audio_settings_ssrc (uint8[] media_blob) throws Efni.Error {
+		uint8[] settings = field_bytes (media_blob, 3);
+		return (uint32) field_varint (settings, 1);
+	}
+
+	private uint8[] field_bytes (uint8[] message, int wanted) throws Efni.Error {
+		var reader = new ProtobufReader (message);
+		while (reader.has_more) {
+			uint8 wire_type;
+			int field = reader.read_field (out wire_type);
+			if (field == wanted && wire_type == 2)
+				return reader.read_bytes ();
+			reader.skip (wire_type);
+		}
+		assert_not_reached ();
+	}
+
+	private uint64 field_varint (uint8[] message, int wanted) throws Efni.Error {
+		var reader = new ProtobufReader (message);
+		while (reader.has_more) {
+			uint8 wire_type;
+			int field = reader.read_field (out wire_type);
+			if (field == wanted && wire_type == 0)
+				return reader.read_varint ();
+			reader.skip (wire_type);
+		}
+		assert_not_reached ();
+	}
+
+	private uint8[] inflate (Bytes compressed) throws GLib.Error {
+		var source = new ConverterInputStream (new MemoryInputStream.from_bytes (compressed),
+			new ZlibDecompressor (ZlibCompressorFormat.ZLIB));
+		var sink = new MemoryOutputStream.resizable ();
+		sink.splice (source, OutputStreamSpliceFlags.CLOSE_SOURCE | OutputStreamSpliceFlags.CLOSE_TARGET);
+		return sink.steal_as_bytes ().get_data ();
 	}
 
 	private void derives_stream_key () {
