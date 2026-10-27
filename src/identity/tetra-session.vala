@@ -106,7 +106,8 @@ namespace Idun {
 			return TetraCrypto.derive_message_key_indicator (receiving.message_key_for (index));
 		}
 
-		public uint8[] seal (uint8[] plaintext, uint8[] authenticated_data) throws Efni.Error {
+		public uint8[] seal (uint8[] plaintext, uint8[] topic, TetraBinding[] bindings)
+				throws Efni.Error {
 			if (sending_needs_step)
 				step_sending ();
 
@@ -115,12 +116,14 @@ namespace Idun {
 
 			Bytes? encapsulation = encapsulation_to_send;
 			encapsulation_to_send = null;
+			uint8[] authenticated_data = TetraCrypto.build_authenticated_data (topic,
+				TetraCrypto.derive_message_key_indicator (message_key), our_ratchet_point, bindings);
 			return TetraCrypto.seal_message (message_key, signing_key, our_ratchet_point, index,
 				plaintext, authenticated_data, encapsulation);
 		}
 
-		public uint8[] open (uint8[] message, uint8[] sender_signing_point, uint8[] authenticated_data,
-				bool verify = true) throws Efni.Error {
+		public uint8[] open (uint8[] message, uint8[] sender_signing_point, uint8[] topic,
+				TetraBinding[] bindings, bool verify = true) throws Efni.Error {
 			var parsed = TetraMessage.parse (message);
 
 			uint8[] their_point = parsed.ecdh_public_key.get_data ();
@@ -128,6 +131,8 @@ namespace Idun {
 				step_receiving (their_point);
 
 			uint8[] message_key = receiving.message_key_for (parsed.message_index);
+			uint8[] authenticated_data = TetraCrypto.build_authenticated_data (topic,
+				parsed.message_key_indicator.get_data (), their_point, bindings);
 			return TetraCrypto.open_message (message_key, sender_signing_point, message,
 				authenticated_data, verify);
 		}
