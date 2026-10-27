@@ -66,6 +66,7 @@ if host_os != 'macos'
     'identity' / 'tetra-binding.vala',
     'identity' / 'tetra-crypto.vala',
     'identity' / 'tetra-ratchet.vala',
+    'identity' / 'tetra-root-context.vala',
     'identity' / 'tetra-session.vala',
     'identity' / 'ids-registration.vala',
     'identity' / 'ids-lookup.vala',

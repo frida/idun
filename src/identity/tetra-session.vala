@@ -20,16 +20,21 @@ namespace Idun {
 		private TetraSymmetricRatchet? receiving;
 		private bool sending_needs_step;
 		private Bytes? encapsulation_to_send;
+		private TetraRootContext context;
+		private bool we_are_initiator;
 
+		private const string START_DST = "TetraStart-";
 		private const string RATCHET_DST = "TetraRatchet-";
 
 		private TetraSession (Bytes signing_key) {
 			this.signing_key = signing_key;
 		}
 
-		public static TetraSession establish_as_sender (Bytes signing_key, uint8[] peer_ratchet_point,
-				uint8[] peer_kyber_public) throws Efni.Error {
+		public static TetraSession establish_as_sender (Bytes signing_key, TetraRootContext context,
+				uint8[] peer_ratchet_point, uint8[] peer_kyber_public) throws Efni.Error {
 			var session = new TetraSession (signing_key);
+			session.context = context;
+			session.we_are_initiator = true;
 			session.our_ratchet_key = TetraCrypto.generate_key_agreement_key ();
 			session.our_ratchet_point = TetraCrypto.compact_point (
 				TetraCrypto.public_key_point (session.our_ratchet_key));
@@ -42,16 +47,18 @@ namespace Idun {
 			session.encapsulation_to_send = new Bytes (encapsulation);
 
 			uint8[] chain;
-			TetraCrypto.derive_root_and_chain (new uint8[0], ecdh_secret, kem_secret, RATCHET_DST.data,
-				out session.root_key, out chain);
+			TetraCrypto.derive_root_and_chain (new uint8[0], ecdh_secret, kem_secret,
+				session.root_transcript (START_DST), out session.root_key, out chain);
 			session.sending = new TetraSymmetricRatchet (chain);
 			return session;
 		}
 
-		public static TetraSession establish_as_receiver (Bytes signing_key, Bytes our_ratchet_key,
-				uint8[] our_kyber_secret, uint8[] sender_ratchet_point, uint8[] encapsulation)
-				throws Efni.Error {
+		public static TetraSession establish_as_receiver (Bytes signing_key, TetraRootContext context,
+				Bytes our_ratchet_key, uint8[] our_kyber_secret, uint8[] sender_ratchet_point,
+				uint8[] encapsulation) throws Efni.Error {
 			var session = new TetraSession (signing_key);
+			session.context = context;
+			session.we_are_initiator = false;
 			session.our_ratchet_key = our_ratchet_key;
 			session.our_ratchet_point = TetraCrypto.compact_point (
 				TetraCrypto.public_key_point (our_ratchet_key));
@@ -62,11 +69,34 @@ namespace Idun {
 			uint8[] kem_secret = TetraCrypto.kyber_decapsulate (our_kyber_secret, encapsulation);
 
 			uint8[] chain;
-			TetraCrypto.derive_root_and_chain (new uint8[0], ecdh_secret, kem_secret, RATCHET_DST.data,
-				out session.root_key, out chain);
+			TetraCrypto.derive_root_and_chain (new uint8[0], ecdh_secret, kem_secret,
+				session.root_transcript (START_DST), out session.root_key, out chain);
 			session.receiving = new TetraSymmetricRatchet (chain);
 			session.sending_needs_step = true;
 			return session;
+		}
+
+		/**
+		 * Assemble the conversation DST for a root derivation. The ratchet points are the
+		 * current ones, mapped onto initiator and responder by our role; everything else is
+		 * the fixed registration binding. The label selects establishment versus a
+		 * Diffie-Hellman ratchet step.
+		 */
+		private uint8[] root_transcript (string label) {
+			uint8[] responder_point = we_are_initiator ? their_ratchet_point : our_ratchet_point;
+			uint8[] initiator_point = we_are_initiator ? our_ratchet_point : their_ratchet_point;
+			return TetraCrypto.build_root_transcript (
+				context.initiator_uri.get_data (),
+				context.responder_handle_hash.get_data (),
+				context.initiator_signing.get_data (),
+				context.responder_uri.get_data (),
+				context.responder_push_token.get_data (),
+				context.responder_signing.get_data (),
+				label,
+				responder_point,
+				initiator_point,
+				context.initiator_kyber_public.get_data (),
+				context.responder_kyber_public.get_data ());
 		}
 
 		public uint8[] seal (uint8[] plaintext, uint8[] authenticated_data) throws Efni.Error {
@@ -110,6 +140,8 @@ namespace Idun {
 			writer.append_varint (8, sending_needs_step ? 1 : 0);
 			if (encapsulation_to_send != null)
 				writer.append_bytes (9, encapsulation_to_send.get_data ());
+			writer.append_bytes (10, context.serialize ());
+			writer.append_varint (11, we_are_initiator ? 1 : 0);
 			return writer.data;
 		}
 
@@ -123,6 +155,8 @@ namespace Idun {
 			TetraSymmetricRatchet? receiving = null;
 			bool sending_needs_step = false;
 			Bytes? encapsulation = null;
+			TetraRootContext? context = null;
+			bool we_are_initiator = false;
 
 			var reader = new ProtobufReader (data);
 			while (reader.has_more) {
@@ -155,6 +189,12 @@ namespace Idun {
 					case 9:
 						encapsulation = new Bytes (reader.read_bytes ());
 						break;
+					case 10:
+						context = TetraRootContext.restore (reader.read_bytes ());
+						break;
+					case 11:
+						we_are_initiator = reader.read_varint () != 0;
+						break;
 					default:
 						reader.skip (wire_type);
 						break;
@@ -162,10 +202,12 @@ namespace Idun {
 			}
 
 			if (signing_key == null || root_key == null || our_ratchet_key == null ||
-					our_ratchet_point == null || their_ratchet_point == null)
+					our_ratchet_point == null || their_ratchet_point == null || context == null)
 				throw new Efni.Error.PROTOCOL ("Incomplete pair-tetra session state");
 
 			var session = new TetraSession (signing_key);
+			session.context = context;
+			session.we_are_initiator = we_are_initiator;
 			session.root_key = root_key;
 			session.our_ratchet_key = our_ratchet_key;
 			session.our_ratchet_point = our_ratchet_point;
@@ -185,8 +227,8 @@ namespace Idun {
 			uint8[] ecdh_secret = TetraCrypto.ecdh (our_ratchet_key,
 				TetraCrypto.decompress_point (their_ratchet_point));
 			uint8[] chain;
-			TetraCrypto.derive_root_and_chain (root_key, ecdh_secret, null, RATCHET_DST.data,
-				out root_key, out chain);
+			TetraCrypto.derive_root_and_chain (root_key, ecdh_secret, null,
+				root_transcript (RATCHET_DST), out root_key, out chain);
 			sending = new TetraSymmetricRatchet (chain);
 			sending_needs_step = false;
 		}
@@ -197,8 +239,8 @@ namespace Idun {
 			uint8[] ecdh_secret = TetraCrypto.ecdh (our_ratchet_key,
 				TetraCrypto.decompress_point (their_point));
 			uint8[] chain;
-			TetraCrypto.derive_root_and_chain (root_key, ecdh_secret, null, RATCHET_DST.data,
-				out root_key, out chain);
+			TetraCrypto.derive_root_and_chain (root_key, ecdh_secret, null,
+				root_transcript (RATCHET_DST), out root_key, out chain);
 			receiving = new TetraSymmetricRatchet (chain);
 			sending_needs_step = true;
 		}
