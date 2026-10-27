@@ -106,7 +106,7 @@ namespace Idun.Examples {
 				return;
 			}
 
-			FaceTimeCall call;
+			FaceTimeCall? call;
 			bool verified = true;
 			try {
 				call = endpoint.open_tetra_invitation (notification, senders, ngm);
@@ -114,6 +114,10 @@ namespace Idun.Examples {
 				print ("  signature unverified (%s); decrypting without verification\n", e.message);
 				verified = false;
 				call = endpoint.open_tetra_invitation (notification, senders, ngm, false);
+			}
+			if (call == null) {
+				print ("  in-call session update (not an incoming call); not answering\n");
+				return;
 			}
 			uint8[] plaintext = call.invitation.get_data ();
 			bool bplist = plaintext.length >= 8 &&

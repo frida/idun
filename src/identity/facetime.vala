@@ -89,13 +89,14 @@ namespace Idun {
 		}
 
 		/**
-		 * Decrypt an incoming pair-tetra FaceTime invitation. The caller resolves the
-		 * sender's handle to its registered devices so the signing key, push token and
-		 * Kyber public key that bind the key agreement can be read back; Idun's own NGM
-		 * identity supplies the responder half. The returned plaintext is the invitation
-		 * the caller would decline or answer.
+		 * Decrypt an incoming pair-tetra FaceTime message and, when it is a genuine call
+		 * invitation, return the call it opens. The caller resolves the sender's handle to
+		 * its registered devices so the signing key, push token and Kyber public key that
+		 * bind the key agreement can be read back; Idun's own NGM identity supplies the
+		 * responder half. In-call session updates—media-key announcements or peers' join
+		 * status—decrypt the same way but are not answerable calls, so they return null.
 		 */
-		public FaceTimeCall open_tetra_invitation (Variant notification,
+		public FaceTimeCall? open_tetra_invitation (Variant notification,
 				Gee.Collection<PeerIdentity> senders, NgmIdentity ngm, bool verify = true)
 				throws Efni.Error {
 			Variant? payload = notification.lookup_value ("payload", new VariantType ("a{sv}"));
@@ -117,8 +118,6 @@ namespace Idun {
 			if (tetra.kem_encapsulation == null)
 				throw new Efni.Error.PROTOCOL ("Pair-tetra invitation carries no Kyber encapsulation");
 
-			// The transcript's initiator Kyber slot binds the encapsulation the caller sent,
-			// not its public key; it reaches the session through establish_as_receiver.
 			var context = new TetraRootContext (
 				new Bytes (sender.get_string ().data),
 				caller.push_token,
@@ -132,9 +131,6 @@ namespace Idun {
 				ngm.kem_secret.get_data (), tetra.ecdh_public_key.get_data (),
 				tetra.kem_encapsulation.get_data ());
 
-			// The signature covers the service topic and a routing binding for each party:
-			// the caller as initiator and this device as responder. The session rebuilds
-			// the authenticated data from the message's own key indicator and ephemeral key.
 			var bindings = new TetraBinding[] {
 				new TetraBinding (new Bytes (sender.get_string ().data), caller.push_token,
 					peer.signing_point),
@@ -147,7 +143,11 @@ namespace Idun {
 
 			string group_id;
 			try {
-				group_id = new Plist.from_data (invitation).get_string ("fanout-groupID-key");
+				var decoded = new Plist.from_data (invitation);
+				bool carries_media_offer = decoded.has ("participant-data-key");
+				if (!carries_media_offer)
+					return null;
+				group_id = decoded.get_string ("fanout-groupID-key");
 			} catch (PlistError e) {
 				throw new Efni.Error.PROTOCOL ("Malformed FaceTime invitation: %s", e.message);
 			}
