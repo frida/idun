@@ -116,8 +116,10 @@ namespace Idun {
 
 			Bytes? encapsulation = encapsulation_to_send;
 			encapsulation_to_send = null;
+			uint8[] encapsulation_data = encapsulation != null ? encapsulation.get_data () : new uint8[0];
 			uint8[] authenticated_data = TetraCrypto.build_authenticated_data (topic,
-				TetraCrypto.derive_message_key_indicator (message_key), our_ratchet_point, bindings);
+				TetraCrypto.derive_message_key_indicator (message_key), our_ratchet_point, index,
+				bindings, encapsulation_data, new uint8[0]);
 			return TetraCrypto.seal_message (message_key, signing_key, our_ratchet_point, index,
 				plaintext, authenticated_data, encapsulation);
 		}
@@ -131,8 +133,13 @@ namespace Idun {
 				step_receiving (their_point);
 
 			uint8[] message_key = receiving.message_key_for (parsed.message_index);
+			uint8[] encapsulation = parsed.kem_encapsulation != null
+				? parsed.kem_encapsulation.get_data () : new uint8[0];
+			uint8[] used_registered_keys = parsed.used_registered_keys != null
+				? parsed.used_registered_keys.get_data () : new uint8[0];
 			uint8[] authenticated_data = TetraCrypto.build_authenticated_data (topic,
-				parsed.message_key_indicator.get_data (), their_point, bindings);
+				parsed.message_key_indicator.get_data (), their_point, parsed.message_index, bindings,
+				encapsulation, used_registered_keys);
 			return TetraCrypto.open_message (message_key, sender_signing_point, message,
 				authenticated_data, verify);
 		}

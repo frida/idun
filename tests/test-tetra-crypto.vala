@@ -114,7 +114,7 @@ namespace Idun.TetraCryptoTest {
 		uint8[] ciphertext = captured[40 : 296];
 		uint8[] authenticated_data = captured[296 : captured.length];
 
-		uint8[] built = TetraCrypto.build_signature_transcript (true, 15, ciphertext, authenticated_data);
+		uint8[] built = TetraCrypto.build_signature_transcript (15, ciphertext, authenticated_data);
 
 		assert_true (new Bytes (built).compare (new Bytes (captured)) == 0);
 	}

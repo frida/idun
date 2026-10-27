@@ -17,10 +17,11 @@ namespace Idun {
 		private const string MESSAGE_KEY_INDICATOR_INFO = SYMMETRIC_LAYER_BASE + "MessageKeyIndicator";
 		private const string ROOT_KEY_INFO = "Tetra-v1.0-RootKeyDerivation-";
 		private const string MESSAGE_SIGNATURE_DOMAIN = "com.apple.Tetra.MessageSignature";
-		private const string NO_RATCHET_SIGNATURE_DOMAIN = "com.apple.TetraNoRatchet.MessageSignature";
 
 		private const int MESSAGE_KEY_LENGTH = 32;
 		private const int CTR_IV_LENGTH = 16;
+		private const int GCM_NONCE_LENGTH = 12;
+		private const int GCM_TAG_LENGTH = 16;
 		private const int ROOT_AND_CHAIN_LENGTH = 64;
 		private const int MESSAGE_KEY_INDICATOR_LENGTH = 16;
 		private const uint32 TETRA_VERSION = 15;
@@ -39,6 +40,59 @@ namespace Idun {
 			ctx.decrypt_final ((uint8[]) ((uint8 *) output + total), ref produced);
 			total += produced;
 			return output[0 : total];
+		}
+
+		/**
+		 * AES-256-GCM open: the Paddy symmetric layer seals each message under a key and
+		 * 12-byte nonce derived from the message key, with the 16-byte authentication tag
+		 * trailing the ciphertext. Returns the recovered padded plaintext.
+		 */
+		public static uint8[] aes_256_gcm_open (uint8[] key, uint8[] nonce, uint8[] ciphertext_and_tag,
+				uint8[] authenticated_data) throws Efni.Error {
+			if (ciphertext_and_tag.length < GCM_TAG_LENGTH)
+				throw new Efni.Error.PROTOCOL ("AES-256-GCM ciphertext shorter than its tag");
+			int ct_length = ciphertext_and_tag.length - GCM_TAG_LENGTH;
+			uint8[] ciphertext = ciphertext_and_tag[0 : ct_length];
+			uint8[] tag = ciphertext_and_tag[ct_length : ciphertext_and_tag.length];
+
+			var cipher = Cipher.fetch (null, "AES-256-GCM");
+			var ctx = new CipherContext ();
+			if (ctx.decrypt_init_ex (cipher) != 1)
+				throw new Efni.Error.PROTOCOL ("Unable to initialize AES-256-GCM");
+			if (ctx.ctrl (CipherCtrlType.GCM_SET_IVLEN, nonce.length, null) != 1)
+				throw new Efni.Error.PROTOCOL ("Unable to set AES-256-GCM nonce length");
+			if (ctx.decrypt_init_ex (null, null, key, nonce) != 1)
+				throw new Efni.Error.PROTOCOL ("Unable to key AES-256-GCM");
+
+			int produced = 0;
+			if (authenticated_data.length != 0)
+				ctx.decrypt_update (null, ref produced, authenticated_data);
+
+			var output = new uint8[ct_length + GCM_TAG_LENGTH];
+			ctx.decrypt_update (output, ref produced, ciphertext);
+			int total = produced;
+
+			if (ctx.ctrl (CipherCtrlType.GCM_SET_TAG, GCM_TAG_LENGTH, tag) != 1)
+				throw new Efni.Error.PROTOCOL ("Unable to set AES-256-GCM tag");
+			if (ctx.decrypt_final ((uint8[]) ((uint8 *) output + total), ref produced) != 1)
+				throw new Efni.Error.PROTOCOL ("AES-256-GCM authentication failed");
+			total += produced;
+			return output[0 : total];
+		}
+
+		public static uint8[] aes_256_gcm_peek (uint8[] key, uint8[] nonce, uint8[] ciphertext_and_tag)
+				throws Efni.Error {
+			int ct_length = ciphertext_and_tag.length - GCM_TAG_LENGTH;
+			uint8[] ciphertext = ciphertext_and_tag[0 : ct_length];
+			var cipher = Cipher.fetch (null, "AES-256-GCM");
+			var ctx = new CipherContext ();
+			ctx.decrypt_init_ex (cipher);
+			ctx.ctrl (CipherCtrlType.GCM_SET_IVLEN, nonce.length, null);
+			ctx.decrypt_init_ex (null, null, key, nonce);
+			var output = new uint8[ct_length + GCM_TAG_LENGTH];
+			int produced = 0;
+			ctx.decrypt_update (output, ref produced, ciphertext);
+			return output[0 : produced];
 		}
 
 		/**
@@ -165,10 +219,8 @@ namespace Idun {
 			uint8[] inner = new TetraInnerMessage (new Bytes (plaintext)).serialize ();
 			uint8[] ciphertext = aes_256_ctr (cipher_key, iv, pad (inner));
 
-			// The establishing message carries the Kyber encapsulation and is signed under
-			// the no-ratchet domain; subsequent ratchet steps use the ratchet domain.
-			uint8[] transcript = build_signature_transcript (kem_encapsulation == null, TETRA_VERSION,
-				ciphertext, authenticated_data);
+			uint8[] transcript = build_signature_transcript (TETRA_VERSION, ciphertext,
+				authenticated_data);
 			var message = new TetraMessage (TETRA_VERSION, new Bytes (ciphertext),
 				new Bytes (sign (signing_key, transcript)), new Bytes (ecdh_public_key), message_index,
 				new Bytes (derive_message_key_indicator (message_key)), kem_encapsulation);
@@ -252,8 +304,8 @@ namespace Idun {
 			var message = TetraMessage.parse (serialized);
 
 			if (verify) {
-				uint8[] transcript = build_signature_transcript (message.kem_encapsulation == null,
-					message.version, message.ciphertext.get_data (), authenticated_data);
+				uint8[] transcript = build_signature_transcript (message.version,
+					message.ciphertext.get_data (), authenticated_data);
 				if (!verify_with_point (sender_signing_point, transcript, message.signature.get_data ()))
 					throw new Efni.Error.PROTOCOL ("Invalid pair-tetra message signature");
 			}
@@ -296,35 +348,48 @@ namespace Idun {
 		 * covers it, so a peer cannot be redirected or impersonated.
 		 */
 		public static uint8[] build_authenticated_data (uint8[] topic, uint8[] message_key_indicator,
-				uint8[] ecdh_public_key, TetraBinding[] bindings) {
-			var data = new ByteArray ();
-			data.append (i2osp (topic.length, 4));
-			data.append (topic);
-			data.append (message_key_indicator);
-			data.append (ecdh_public_key);
-			data.append ({ 0x01, 0x00, 0x00, 0x00 });
+				uint8[] ecdh_public_key, uint64 message_index, TetraBinding[] bindings,
+				uint8[] kem_encapsulation, uint8[] used_registered_keys) {
+			Bytes message_counter = new BufferBuilder (LITTLE_ENDIAN)
+				.append_uint32 ((uint32) message_index)
+				.build ();
+
+			var builder = new BufferBuilder (BIG_ENDIAN)
+				.append_uint32 (topic.length)
+				.append_data (topic)
+				.append_data (message_key_indicator)
+				.append_data (ecdh_public_key)
+				.append_bytes (message_counter);
 
 			foreach (var binding in bindings) {
-				data.append (i2osp (binding.handle.length, 4));
-				data.append (binding.handle.get_data ());
-				data.append (i2osp (binding.push_token.length, 4));
-				data.append (binding.push_token.get_data ());
-				data.append (binding.device_key.get_data ());
+				builder
+					.append_uint32 (binding.handle.length)
+					.append_bytes (binding.handle)
+					.append_uint32 (binding.push_token.length)
+					.append_bytes (binding.push_token)
+					.append_bytes (binding.device_key);
 			}
 
-			data.append (new uint8[10]);
-			return data.data;
+			return builder
+				.append_uint32 (0)
+				.append_uint32 (kem_encapsulation.length)
+				.append_data (kem_encapsulation)
+				.append_uint16 ((uint16) used_registered_keys.length)
+				.append_data (used_registered_keys)
+				.build ()
+				.get_data ();
 		}
 
-		public static uint8[] build_signature_transcript (bool ratchet, uint32 version,
-				uint8[] ciphertext, uint8[] authenticated_data) {
-			var transcript = new ByteArray ();
-			transcript.append ((ratchet ? MESSAGE_SIGNATURE_DOMAIN : NO_RATCHET_SIGNATURE_DOMAIN).data);
-			transcript.append (i2osp (version, 4));
-			transcript.append (i2osp (ciphertext.length, 4));
-			transcript.append (ciphertext);
-			transcript.append (authenticated_data);
-			return transcript.data;
+		public static uint8[] build_signature_transcript (uint32 version, uint8[] ciphertext,
+				uint8[] authenticated_data) {
+			return new BufferBuilder (BIG_ENDIAN)
+				.append_data (MESSAGE_SIGNATURE_DOMAIN.data)
+				.append_uint32 (version)
+				.append_uint32 (ciphertext.length)
+				.append_data (ciphertext)
+				.append_data (authenticated_data)
+				.build ()
+				.get_data ();
 		}
 
 		public static uint8[] sign (Bytes private_key_pem, uint8[] data) throws Efni.Error {
