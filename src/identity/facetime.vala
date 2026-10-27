@@ -26,6 +26,7 @@ namespace Idun {
 		private const int CONVERSATION_MESSAGE = 242;
 		private const int DECLINE = 9;
 		private const int MEDIA_WRAP_MODE = 1;
+		private const int JOIN_NOTIFICATION = 2;
 		private const int64 PROTOCOL_VERSION = 26006000;
 		private const uint64 DECLINE_FLAG = 0xffffffff;
 
@@ -200,6 +201,30 @@ namespace Idun {
 			payload.set_integer ("rtmpwm", MEDIA_WRAP_MODE);
 			payload.set_string ("s", group_id);
 			payload.set_string ("fanout-groupID-key", group_id);
+			return payload.to_binary ();
+		}
+
+		/**
+		 * Build the join-status message a call answer sends: the binary property list that
+		 * declares this device as a joining, non-initiating participant of the call's fanout
+		 * group, naming the group members and this device's participant id so the caller can
+		 * route media to it.
+		 */
+		public static uint8[] build_join_status (string group_id, string[] members,
+				int64 participant_id, uint8[] client_context) {
+			var group_members = new PlistArray ();
+			foreach (string member in members)
+				group_members.add_string (member);
+
+			var payload = new Plist ();
+			payload.set_bytes ("client-context-data-key", new Bytes (client_context));
+			payload.set_boolean ("is-initiator-key", false);
+			payload.set_string ("fanout-groupID-key", group_id);
+			payload.set_array ("fanout-groupMembers-key", group_members);
+			payload.set_boolean ("is-u-plus-one-key", true);
+			payload.set_integer ("join-notification-key", JOIN_NOTIFICATION);
+			payload.set_string ("s", group_id);
+			payload.set_integer ("participant-id-key", participant_id);
 			return payload.to_binary ();
 		}
 
