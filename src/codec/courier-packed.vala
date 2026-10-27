@@ -24,12 +24,12 @@ namespace Idun {
 				uint disp = (head >> 4) & 3;
 				string name;
 				if (disp == 0) {
-					name = field_name (cursor.resume_integer (head, 4));
+					name = field_name (head & 0xf);
 				} else if (disp == 1) {
 					name = cursor.read_string (cursor.resume_integer (head, 4) + 1);
 					keys.add (name);
 				} else {
-					name = keys[key_index (cursor.resume_integer (head, 5))];
+					name = keys[key_index (head & 0x1f)];
 				}
 				fields[name] = read_value (cursor, head >> 6);
 			}
@@ -95,8 +95,9 @@ namespace Idun {
 				keys.add (name);
 				return name;
 			}
-			uint index = (disp == 0) ? cursor.resume_integer (head, 4) : cursor.resume_integer (head, 5);
-			return keys[key_index (index)];
+			if (disp == 0)
+				return field_name (head & 0xf);
+			return keys[key_index (head & 0x1f)];
 		}
 
 		private static int64 read_scalar_integer (Cursor cursor, uint8 tag) throws Efni.Error {
