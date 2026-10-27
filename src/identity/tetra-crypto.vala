@@ -64,12 +64,58 @@ namespace Idun {
 			return hkdf (digest, HKDF_MODE_EXTRACT_AND_EXPAND, ikm, salt, info, length);
 		}
 
+		/**
+		 * Keyed-hash message authentication, as used by the raw HKDF-Extract steps of the
+		 * Diffie-Hellman ratchet; the key doubles as the extraction salt.
+		 */
+		private static uint8[] hmac (ChecksumType digest, uint8[] key, uint8[] data) {
+			var mac = new GLib.Hmac (digest, key);
+			mac.update (data);
+			var output = new uint8[64];
+			size_t length = output.length;
+			mac.get_digest (output, ref length);
+			return output[0 : length];
+		}
+
 		public static void derive_sender_authentication (uint8[] message_key, out uint8[] iv,
 				out uint8[] key) throws Efni.Error {
 			uint8[] keying = hkdf_expand (ShortName.sha384, message_key, SENDER_AUTH_INFO.data,
 				CTR_IV_LENGTH + MESSAGE_KEY_LENGTH);
 			iv = keying[0 : CTR_IV_LENGTH];
 			key = keying[CTR_IV_LENGTH : CTR_IV_LENGTH + MESSAGE_KEY_LENGTH];
+		}
+
+		/**
+		 * Assemble the pair-tetra root-derivation transcript: the registration binding
+		 * that commits both peers' handles, push token, signing keys, ratchet points and
+		 * Kyber public keys into the root key. The label selects establishment
+		 * ("TetraStart-") versus a Diffie-Hellman ratchet step ("TetraRatchet-"). Fed to
+		 * {@link derive_root_and_chain} as the conversation DST.
+		 */
+		public static uint8[] build_root_transcript (uint8[] initiator_uri,
+				uint8[] responder_handle_hash, uint8[] initiator_signing, uint8[] responder_uri,
+				uint8[] responder_push_token, uint8[] responder_signing, string label,
+				uint8[] responder_ratchet_point, uint8[] initiator_ratchet_point,
+				uint8[] initiator_kyber_public, uint8[] responder_kyber_public) {
+			var transcript = new ByteArray ();
+			transcript.append (i2osp (initiator_uri.length, 4));
+			transcript.append (initiator_uri);
+			transcript.append (i2osp (responder_handle_hash.length, 4));
+			transcript.append (responder_handle_hash);
+			transcript.append (initiator_signing);
+			transcript.append (i2osp (responder_uri.length, 4));
+			transcript.append (responder_uri);
+			transcript.append (i2osp (responder_push_token.length, 4));
+			transcript.append (responder_push_token);
+			transcript.append (responder_signing);
+			transcript.append (label.data);
+			transcript.append (responder_ratchet_point);
+			transcript.append (initiator_ratchet_point);
+			transcript.append (i2osp (initiator_kyber_public.length, 4));
+			transcript.append (initiator_kyber_public);
+			transcript.append (i2osp (responder_kyber_public.length, 4));
+			transcript.append (responder_kyber_public);
+			return transcript.data;
 		}
 
 		/**
@@ -81,20 +127,17 @@ namespace Idun {
 		public static void derive_root_and_chain (uint8[] prior_root, uint8[] ecdh_secret,
 				uint8[]? kem_secret, uint8[] conversation_dst, out uint8[] root, out uint8[] chain)
 				throws Efni.Error {
-			var ikm = new ByteArray ();
-			ikm.append (i2osp (ecdh_secret.length, 4));
-			ikm.append (ecdh_secret);
-			if (kem_secret != null) {
-				ikm.append (i2osp (kem_secret.length, 4));
-				ikm.append (kem_secret);
-			}
+			// Cascaded HKDF-Extract: the classical secret is extracted under the prior root,
+			// then the post-quantum secret salts a second extraction of that pseudo-random key.
+			uint8[] prk = hmac (ChecksumType.SHA384, prior_root, ecdh_secret);
+			if (kem_secret != null)
+				prk = hmac (ChecksumType.SHA384, kem_secret, prk);
 
 			var info = new ByteArray ();
 			info.append (ROOT_KEY_INFO.data);
 			info.append (conversation_dst);
 
-			uint8[] derived = hkdf_extract_and_expand (ShortName.sha384, ikm.data, prior_root,
-				info.data, ROOT_AND_CHAIN_LENGTH);
+			uint8[] derived = hkdf_expand (ShortName.sha384, prk, info.data, ROOT_AND_CHAIN_LENGTH);
 			root = derived[0 : MESSAGE_KEY_LENGTH];
 			chain = derived[MESSAGE_KEY_LENGTH : ROOT_AND_CHAIN_LENGTH];
 		}
