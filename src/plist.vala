@@ -628,14 +628,8 @@ namespace Idun {
 					return;
 				}
 
-				if (val < 0) {
-					output.put_byte (0x13);
-					output.put_int64 (val);
-					return;
-				}
-
-				output.put_byte (0x14);
-				output.put_uint64 (val);
+				output.put_byte (0x13);
+				output.put_int64 (val);
 			}
 
 			private void write_float (float val) throws IOError {
