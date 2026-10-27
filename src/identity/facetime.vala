@@ -86,6 +86,53 @@ namespace Idun {
 			return new CallInvitation (group_id, sender.get_string (), sender_token, caller.identity_key);
 		}
 
+		/**
+		 * Decrypt an incoming pair-tetra FaceTime invitation. The caller resolves the
+		 * sender's handle to its registered devices so the signing key, push token and
+		 * Kyber public key that bind the key agreement can be read back; Idun's own NGM
+		 * identity supplies the responder half. The returned plaintext is the invitation
+		 * the caller would decline or answer.
+		 */
+		public uint8[] open_tetra_invitation (Variant notification, Gee.Collection<PeerIdentity> senders,
+				NgmIdentity ngm, bool verify = true) throws Efni.Error {
+			Variant? payload = notification.lookup_value ("payload", new VariantType ("a{sv}"));
+			if (payload == null)
+				throw new Efni.Error.PROTOCOL ("FaceTime notification carried no payload");
+
+			Variant? sealed = payload.lookup_value ("P", new VariantType ("ay"));
+			Variant? sender = payload.lookup_value ("sP", VariantType.STRING);
+			Variant? token = payload.lookup_value ("t", new VariantType ("ay"));
+			if (sealed == null || sender == null || token == null)
+				throw new Efni.Error.PROTOCOL ("FaceTime invitation is missing routing fields");
+
+			PeerIdentity caller = identity_for_token (senders, token.get_data_as_bytes ());
+			if (caller.ngm_prekey == null)
+				throw new Efni.Error.PROTOCOL ("Sender published no NGM prekey to open a pair-tetra invitation");
+			NgmPeerPrekey peer = caller.ngm_prekey;
+
+			TetraMessage tetra = TetraMessage.unwrap (sealed.get_data_as_bytes ().get_data ());
+			if (tetra.kem_encapsulation == null)
+				throw new Efni.Error.PROTOCOL ("Pair-tetra invitation carries no Kyber encapsulation");
+
+			// The transcript's initiator Kyber slot binds the encapsulation the caller sent,
+			// not its public key; it reaches the session through establish_as_receiver.
+			var context = new TetraRootContext (
+				new Bytes (sender.get_string ().data),
+				caller.push_token,
+				peer.signing_point,
+				new Bytes (handle.data),
+				courier.push_token,
+				new Bytes (ngm.signing_compact_key ()),
+				ngm.kem_public);
+
+			var session = TetraSession.establish_as_receiver (ngm.signing_key, context, ngm.prekey_key,
+				ngm.kem_secret.get_data (), tetra.ecdh_public_key.get_data (),
+				tetra.kem_encapsulation.get_data ());
+
+			return session.open (tetra.serialize (), peer.signing_point.get_data (), SIGNALING_TOPIC.data,
+				verify);
+		}
+
 		private static PeerIdentity identity_for_token (Gee.Collection<PeerIdentity> senders, Bytes token)
 				throws Efni.Error {
 			foreach (PeerIdentity sender in senders) {

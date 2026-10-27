@@ -87,21 +87,24 @@ namespace Idun {
 
 		/**
 		 * Assemble the pair-tetra root-derivation transcript: the registration binding
-		 * that commits both peers' handles, push token, signing keys, ratchet points and
-		 * Kyber public keys into the root key. The label selects establishment
-		 * ("TetraStart-") versus a Diffie-Hellman ratchet step ("TetraRatchet-"). Fed to
-		 * {@link derive_root_and_chain} as the conversation DST.
+		 * that commits both peers' handles, push tokens, signing keys and ratchet points,
+		 * the initiator's Kyber encapsulation and the responder's Kyber public key into the
+		 * root key. Each party contributes a symmetric block of its URI, APNs push token
+		 * and device signing key; the two Kyber slots are asymmetric, binding the
+		 * encapsulation the initiator sent and the public key it was sealed to. The label
+		 * selects establishment ("TetraStart-") versus a Diffie-Hellman ratchet step
+		 * ("TetraRatchet-"). Fed to {@link derive_root_and_chain} as the conversation DST.
 		 */
 		public static uint8[] build_root_transcript (uint8[] initiator_uri,
-				uint8[] responder_handle_hash, uint8[] initiator_signing, uint8[] responder_uri,
+				uint8[] initiator_push_token, uint8[] initiator_signing, uint8[] responder_uri,
 				uint8[] responder_push_token, uint8[] responder_signing, string label,
 				uint8[] responder_ratchet_point, uint8[] initiator_ratchet_point,
-				uint8[] initiator_kyber_public, uint8[] responder_kyber_public) {
+				uint8[] initiator_kem_encapsulation, uint8[] responder_kyber_public) {
 			var transcript = new ByteArray ();
 			transcript.append (i2osp (initiator_uri.length, 4));
 			transcript.append (initiator_uri);
-			transcript.append (i2osp (responder_handle_hash.length, 4));
-			transcript.append (responder_handle_hash);
+			transcript.append (i2osp (initiator_push_token.length, 4));
+			transcript.append (initiator_push_token);
 			transcript.append (initiator_signing);
 			transcript.append (i2osp (responder_uri.length, 4));
 			transcript.append (responder_uri);
@@ -111,8 +114,8 @@ namespace Idun {
 			transcript.append (label.data);
 			transcript.append (responder_ratchet_point);
 			transcript.append (initiator_ratchet_point);
-			transcript.append (i2osp (initiator_kyber_public.length, 4));
-			transcript.append (initiator_kyber_public);
+			transcript.append (i2osp (initiator_kem_encapsulation.length, 4));
+			transcript.append (initiator_kem_encapsulation);
 			transcript.append (i2osp (responder_kyber_public.length, 4));
 			transcript.append (responder_kyber_public);
 			return transcript.data;
@@ -162,8 +165,10 @@ namespace Idun {
 			uint8[] inner = new TetraInnerMessage (new Bytes (plaintext)).serialize ();
 			uint8[] ciphertext = aes_256_ctr (cipher_key, iv, pad (inner));
 
-			uint8[] transcript = build_signature_transcript (true, TETRA_VERSION, ciphertext,
-				authenticated_data);
+			// The establishing message carries the Kyber encapsulation and is signed under
+			// the no-ratchet domain; subsequent ratchet steps use the ratchet domain.
+			uint8[] transcript = build_signature_transcript (kem_encapsulation == null, TETRA_VERSION,
+				ciphertext, authenticated_data);
 			var message = new TetraMessage (TETRA_VERSION, new Bytes (ciphertext),
 				new Bytes (sign (signing_key, transcript)), new Bytes (ecdh_public_key), message_index,
 				new Bytes (derive_message_key_indicator (message_key)), kem_encapsulation);
@@ -243,13 +248,15 @@ namespace Idun {
 		}
 
 		public static uint8[] open_message (uint8[] message_key, uint8[] sender_signing_point,
-				uint8[] serialized, uint8[] authenticated_data) throws Efni.Error {
+				uint8[] serialized, uint8[] authenticated_data, bool verify = true) throws Efni.Error {
 			var message = TetraMessage.parse (serialized);
 
-			uint8[] transcript = build_signature_transcript (true, message.version,
-				message.ciphertext.get_data (), authenticated_data);
-			if (!verify_with_point (sender_signing_point, transcript, message.signature.get_data ()))
-				throw new Efni.Error.PROTOCOL ("Invalid pair-tetra message signature");
+			if (verify) {
+				uint8[] transcript = build_signature_transcript (message.kem_encapsulation == null,
+					message.version, message.ciphertext.get_data (), authenticated_data);
+				if (!verify_with_point (sender_signing_point, transcript, message.signature.get_data ()))
+					throw new Efni.Error.PROTOCOL ("Invalid pair-tetra message signature");
+			}
 
 			uint8[] iv, cipher_key;
 			derive_sender_authentication (message_key, out iv, out cipher_key);

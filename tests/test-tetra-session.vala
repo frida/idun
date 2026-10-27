@@ -73,7 +73,6 @@ namespace Idun.TetraSessionTest {
 			new Bytes ("mailto:bob@example.com".data),
 			new Bytes (new uint8[32]),
 			new Bytes (responder_signing),
-			new Bytes (responder_kyber_public),
 			new Bytes (responder_kyber_public));
 	}
 

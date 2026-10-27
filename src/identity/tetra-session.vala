@@ -20,6 +20,7 @@ namespace Idun {
 		private TetraSymmetricRatchet? receiving;
 		private bool sending_needs_step;
 		private Bytes? encapsulation_to_send;
+		private uint8[] kem_encapsulation;
 		private TetraRootContext context;
 		private bool we_are_initiator;
 
@@ -45,6 +46,7 @@ namespace Idun {
 			uint8[] encapsulation;
 			uint8[] kem_secret = TetraCrypto.kyber_encapsulate (peer_kyber_public, out encapsulation);
 			session.encapsulation_to_send = new Bytes (encapsulation);
+			session.kem_encapsulation = encapsulation;
 
 			uint8[] chain;
 			TetraCrypto.derive_root_and_chain (new uint8[0], ecdh_secret, kem_secret,
@@ -63,6 +65,7 @@ namespace Idun {
 			session.our_ratchet_point = TetraCrypto.compact_point (
 				TetraCrypto.public_key_point (our_ratchet_key));
 			session.their_ratchet_point = sender_ratchet_point;
+			session.kem_encapsulation = encapsulation;
 
 			uint8[] ecdh_secret = TetraCrypto.ecdh (our_ratchet_key,
 				TetraCrypto.decompress_point (sender_ratchet_point));
@@ -87,7 +90,7 @@ namespace Idun {
 			uint8[] initiator_point = we_are_initiator ? our_ratchet_point : their_ratchet_point;
 			return TetraCrypto.build_root_transcript (
 				context.initiator_uri.get_data (),
-				context.responder_handle_hash.get_data (),
+				context.initiator_push_token.get_data (),
 				context.initiator_signing.get_data (),
 				context.responder_uri.get_data (),
 				context.responder_push_token.get_data (),
@@ -95,8 +98,12 @@ namespace Idun {
 				label,
 				responder_point,
 				initiator_point,
-				context.initiator_kyber_public.get_data (),
+				kem_encapsulation,
 				context.responder_kyber_public.get_data ());
+		}
+
+		public uint8[] message_key_indicator (uint64 index) throws Efni.Error {
+			return TetraCrypto.derive_message_key_indicator (receiving.message_key_for (index));
 		}
 
 		public uint8[] seal (uint8[] plaintext, uint8[] authenticated_data) throws Efni.Error {
@@ -112,8 +119,8 @@ namespace Idun {
 				plaintext, authenticated_data, encapsulation);
 		}
 
-		public uint8[] open (uint8[] message, uint8[] sender_signing_point, uint8[] authenticated_data)
-				throws Efni.Error {
+		public uint8[] open (uint8[] message, uint8[] sender_signing_point, uint8[] authenticated_data,
+				bool verify = true) throws Efni.Error {
 			var parsed = TetraMessage.parse (message);
 
 			uint8[] their_point = parsed.ecdh_public_key.get_data ();
@@ -122,7 +129,7 @@ namespace Idun {
 
 			uint8[] message_key = receiving.message_key_for (parsed.message_index);
 			return TetraCrypto.open_message (message_key, sender_signing_point, message,
-				authenticated_data);
+				authenticated_data, verify);
 		}
 
 		public uint8[] serialize () {
@@ -142,6 +149,7 @@ namespace Idun {
 				writer.append_bytes (9, encapsulation_to_send.get_data ());
 			writer.append_bytes (10, context.serialize ());
 			writer.append_varint (11, we_are_initiator ? 1 : 0);
+			writer.append_bytes (12, kem_encapsulation);
 			return writer.data;
 		}
 
@@ -157,6 +165,7 @@ namespace Idun {
 			Bytes? encapsulation = null;
 			TetraRootContext? context = null;
 			bool we_are_initiator = false;
+			uint8[]? kem_encapsulation = null;
 
 			var reader = new ProtobufReader (data);
 			while (reader.has_more) {
@@ -195,6 +204,9 @@ namespace Idun {
 					case 11:
 						we_are_initiator = reader.read_varint () != 0;
 						break;
+					case 12:
+						kem_encapsulation = reader.read_bytes ();
+						break;
 					default:
 						reader.skip (wire_type);
 						break;
@@ -202,12 +214,14 @@ namespace Idun {
 			}
 
 			if (signing_key == null || root_key == null || our_ratchet_key == null ||
-					our_ratchet_point == null || their_ratchet_point == null || context == null)
+					our_ratchet_point == null || their_ratchet_point == null || context == null ||
+					kem_encapsulation == null)
 				throw new Efni.Error.PROTOCOL ("Incomplete pair-tetra session state");
 
 			var session = new TetraSession (signing_key);
 			session.context = context;
 			session.we_are_initiator = we_are_initiator;
+			session.kem_encapsulation = kem_encapsulation;
 			session.root_key = root_key;
 			session.our_ratchet_key = our_ratchet_key;
 			session.our_ratchet_point = our_ratchet_point;
