@@ -26,6 +26,7 @@ if host_os != 'macos'
   test_sources += 'test-tetra-session.vala'
   test_sources += 'test-tetra-authdata.vala'
   test_sources += 'test-facetime.vala'
+  test_sources += 'test-facetime-media.vala'
   test_sources += 'test-octagon-escrow-keys.vala'
   test_sources += 'test-octagon-bottle.vala'
 endif
