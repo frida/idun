@@ -205,6 +205,27 @@ namespace Idun {
 		}
 
 		/**
+		 * Resolve this device's participant id for a call. The invitation lists the fanout
+		 * group's members as ''token:<hex>/<uri>'' and maps each uri to the participant ids
+		 * of its devices in member order, so a device finds its id by its position among the
+		 * members that share its uri.
+		 */
+		public static int64 resolve_participant_id (string[] members, string uri, string token_hex,
+				int64[] candidates) throws Efni.Error {
+			int index = 0;
+			foreach (string member in members) {
+				string entry = member.substring ("token:".length);
+				int slash = entry.index_of_char ('/');
+				if (entry.substring (slash + 1) != uri)
+					continue;
+				if (entry.substring (0, slash) == token_hex)
+					return candidates[index];
+				index++;
+			}
+			throw new Efni.Error.PROTOCOL ("This device is not a member of the call");
+		}
+
+		/**
 		 * Build the join-status message a call answer sends: the binary property list that
 		 * declares this device as a joining, non-initiating participant of the call's fanout
 		 * group, naming the group members and this device's participant id so the caller can
@@ -303,6 +324,7 @@ namespace Idun {
 		private const int CONVERSATION_MESSAGE = 242;
 		private const int64 PROTOCOL_VERSION = 26006000;
 		private const string MEDIA_TOPIC = "com.apple.private.alloy.facetime.multi";
+		private const uint8[] JOIN_CONTEXT = { 0x10, 0x00 };
 
 		internal FaceTimeCall (ApnsCourier courier, TetraSession session, string handle,
 				string caller_uri, Bytes caller_token, string group_id, uint8[] invitation,
@@ -322,6 +344,38 @@ namespace Idun {
 			uint8[] announcement = FaceTimeEndpoint.build_media_announcement (group_id,
 				FaceTimeEndpoint.media_public_point (media_key));
 			yield post_sealed (announcement, cancellable);
+
+			yield post_sealed (build_join_status (), cancellable);
+		}
+
+		private uint8[] build_join_status () throws Efni.Error {
+			Plist invite;
+			try {
+				invite = new Plist.from_data (invitation.get_data ());
+				PlistArray member_list = invite.get_array ("fanout-groupMembers-key");
+				var members = new string[member_list.length];
+				for (int i = 0; i != member_list.length; i++)
+					members[i] = member_list.get_string (i);
+
+				PlistArray candidates = invite.get_dict ("uri-to-participant-id-key").get_array (handle);
+				var ids = new int64[candidates.length];
+				for (int i = 0; i != candidates.length; i++)
+					ids[i] = candidates.get_integer (i);
+
+				int64 participant_id = FaceTimeEndpoint.resolve_participant_id (members, handle,
+					token_hex (courier.push_token), ids);
+				return FaceTimeEndpoint.build_join_status (group_id, members, participant_id,
+					JOIN_CONTEXT);
+			} catch (PlistError e) {
+				throw new Efni.Error.PROTOCOL ("Malformed FaceTime invitation: %s", e.message);
+			}
+		}
+
+		private static string token_hex (Bytes token) {
+			var builder = new StringBuilder ();
+			foreach (uint8 b in token.get_data ())
+				builder.append_printf ("%02X", b);
+			return builder.str;
 		}
 
 		private async void post_sealed (uint8[] payload, Cancellable? cancellable)

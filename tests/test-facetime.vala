@@ -4,6 +4,24 @@ namespace Idun.FaceTimeTest {
 	public void add_tests () {
 		GLib.Test.add_func ("/FaceTime/media-announcement-round-trips", media_announcement_round_trips);
 		GLib.Test.add_func ("/FaceTime/join-status-round-trips", join_status_round_trips);
+		GLib.Test.add_func ("/FaceTime/resolves-participant-id", resolves_participant_id);
+	}
+
+	private void resolves_participant_id () {
+		string[] members = {
+			"token:3627DF7A8853A59A5598257818F8A4C0535B00476A22FD95A2F28D22E1E4E9EE/mailto:oravnas@gmail.com",
+			"token:D3264B83C3E1238D0BA1F18B3D36EC2F1DCE66735A489C4A1C5AE14CA999E905/mailto:oravnas@gmail.com",
+			"token:48609C9A5E99FDAC33A62F9FA665B6DC59702DFF3DE6CB5237B25F4C3C02980A/tel:+4748270645",
+			"token:F946664DFD8C7EA0ED58D9062321142231D266F86B458E89AE8E30D69BFAF16E/mailto:oravnas@gmail.com"
+		};
+		int64[] oravnas_ids = { 7981590510947947922, 1022952488408394525, 2813757547416776297 };
+		try {
+			int64 id = FaceTimeEndpoint.resolve_participant_id (members, "mailto:oravnas@gmail.com",
+				"D3264B83C3E1238D0BA1F18B3D36EC2F1DCE66735A489C4A1C5AE14CA999E905", oravnas_ids);
+			assert_true (id == 1022952488408394525);
+		} catch (Efni.Error e) {
+			assert_not_reached ();
+		}
 	}
 
 	private void media_announcement_round_trips () {
