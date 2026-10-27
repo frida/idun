@@ -129,7 +129,19 @@ namespace Idun {
 				ngm.kem_secret.get_data (), tetra.ecdh_public_key.get_data (),
 				tetra.kem_encapsulation.get_data ());
 
-			return session.open (tetra.serialize (), peer.signing_point.get_data (), SIGNALING_TOPIC.data,
+			// The signature covers the service topic, the message's key indicator and
+			// ephemeral key, and a routing binding for each party: the caller as initiator
+			// and this device as responder.
+			var bindings = new TetraBinding[] {
+				new TetraBinding (new Bytes (sender.get_string ().data), caller.push_token,
+					peer.signing_point),
+				new TetraBinding (new Bytes (handle.data), courier.push_token,
+					new Bytes (ngm.signing_compact_key ()))
+			};
+			uint8[] authenticated_data = TetraCrypto.build_authenticated_data (SIGNALING_TOPIC.data,
+				tetra.message_key_indicator.get_data (), tetra.ecdh_public_key.get_data (), bindings);
+
+			return session.open (tetra.serialize (), peer.signing_point.get_data (), authenticated_data,
 				verify);
 		}
 
