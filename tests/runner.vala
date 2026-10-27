@@ -22,6 +22,9 @@ namespace Idun.Test {
 		Idun.TetraRatchetTest.add_tests ();
 		Idun.TetraSessionTest.add_tests ();
 		Idun.TetraAuthDataTest.add_tests ();
+		Idun.FaceTimeTest.add_tests ();
+		Idun.OctagonEscrowKeysTest.add_tests ();
+		Idun.OctagonBottleTest.add_tests ();
 #endif
 #if HAVE_MEDIA
 		Idun.IceAgentTest.add_tests ();

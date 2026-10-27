@@ -25,6 +25,7 @@ namespace Idun {
 
 		private const int CONVERSATION_MESSAGE = 242;
 		private const int DECLINE = 9;
+		private const int MEDIA_WRAP_MODE = 1;
 		private const int64 PROTOCOL_VERSION = 26006000;
 		private const uint64 DECLINE_FLAG = 0xffffffff;
 
@@ -160,6 +161,37 @@ namespace Idun {
 			Bytes sealed = crypto.encrypt (call.caller_identity_key, message);
 			Bytes envelope = build_envelope (call.caller_uri, sealed);
 			yield courier.post (SIGNALING_TOPIC, call.caller_token, envelope, cancellable);
+		}
+
+		/**
+		 * Generate the ephemeral key-agreement key a call answer advertises as its
+		 * ''rtmpk'': the public half is the P-256 point to which peers wrap the SRTP master
+		 * keys they share over the media-key material, so a fresh one is minted per call.
+		 */
+		public static Bytes generate_media_key () throws Efni.Error {
+			return TetraCrypto.generate_key_agreement_key ();
+		}
+
+		/**
+		 * The uncompressed 65-byte P-256 point a media key advertises as its ''rtmpk''.
+		 */
+		public static uint8[] media_public_point (Bytes media_key) throws Efni.Error {
+			return TetraCrypto.public_key_point (media_key);
+		}
+
+		/**
+		 * Build the first message a call answer sends: the binary property list that
+		 * advertises this device's media public key for the call's fanout group, so peers
+		 * can wrap the SRTP master keys to it. The payload is sealed and posted like any
+		 * other conversation message once the answering session is established.
+		 */
+		public static uint8[] build_media_announcement (string group_id, uint8[] media_point) {
+			var payload = new Plist ();
+			payload.set_bytes ("rtmpk", new Bytes (media_point));
+			payload.set_integer ("rtmpwm", MEDIA_WRAP_MODE);
+			payload.set_string ("s", group_id);
+			payload.set_string ("fanout-groupID-key", group_id);
+			return payload.to_binary ();
 		}
 
 		private Bytes build_envelope (string caller_uri, Bytes payload) {
