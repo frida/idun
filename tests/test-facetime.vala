@@ -52,14 +52,17 @@ namespace Idun.FaceTimeTest {
 				"token:D3264B83/mailto:oravnas@gmail.com"
 			};
 			uint8[] context = { 0x10, 0x06 };
+			uint8[] media_point = new uint8[65];
+			uint8[] participant_data = { 0x01, 0x02, 0x03 };
 			uint8[] status = FaceTimeEndpoint.build_join_status (group, members, 1022952488408394525,
-				context);
+				context, media_point, participant_data);
 
 			var parsed = new Plist.from_binary (status);
 			assert_true (!parsed.get_boolean ("is-initiator-key"));
 			assert_true (parsed.get_boolean ("is-u-plus-one-key"));
 			assert_true (parsed.get_string ("fanout-groupID-key") == group);
 			assert_true (parsed.get_integer ("join-notification-key") == 2);
+			assert_true (parsed.get_bytes ("participant-data-key").compare (new Bytes (participant_data)) == 0);
 			assert_true (parsed.get_integer ("participant-id-key") == 1022952488408394525);
 			var parsed_members = parsed.get_array ("fanout-groupMembers-key");
 			assert_true (parsed_members.length == 2);

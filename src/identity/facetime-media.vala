@@ -19,6 +19,22 @@ namespace Idun {
 		private const string CONTROL_INFO = "VCControlChannelV2";
 
 		/**
+		 * The media-key indicator a sender stamps on its streams, a short-format key
+		 * identifier carrying the roll and ratchet counters and the sender's participant
+		 * id so a receiver can tell which media key decrypts a packet.
+		 */
+		public static uint8[] media_key_indicator (int64 participant_id) {
+			var indicator = new BufferBuilder (BIG_ENDIAN);
+			indicator.append_uint16 (1 << 4);
+			indicator.append_uint32 ((uint32) ((uint64) participant_id >> 32));
+			indicator.append_uint8 (0);
+			indicator.append_uint32 ((uint32) participant_id);
+			indicator.append_uint32 (0);
+			indicator.append_uint8 (0);
+			return indicator.build ().get_data ();
+		}
+
+		/**
 		 * The SRTP master key (key and salt) that protects one stream, derived from a
 		 * media key and its salt for the stream's synchronisation source. Each SSRC takes
 		 * its own key, so the sender's and each receiver's streams never share one.

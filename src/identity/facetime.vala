@@ -27,6 +27,11 @@ namespace Idun {
 		private const int DECLINE = 9;
 		private const int MEDIA_WRAP_MODE = 1;
 		private const int JOIN_NOTIFICATION = 2;
+		private const int ACCEPT = 3;
+		private const int ANSWER_VERSION = 5;
+		private const string DEVICE_MODEL = "Mac17,2";
+		private const string DEVICE_BUILD = "2235.63.5.2";
+		private const string DEVICE_HARDWARE = "26A428";
 		private const int64 PROTOCOL_VERSION = 26006000;
 		private const uint64 DECLINE_FLAG = 0xffffffff;
 
@@ -226,13 +231,51 @@ namespace Idun {
 		}
 
 		/**
+		 * Build the answer a one-to-one call expects: the binary property list carrying the
+		 * conversation message that accepts the call, naming this device's model so the
+		 * caller can present the connected participant.
+		 */
+		public static uint8[] build_call_answer (string group_id) {
+			uint8[] call_info = new ProtobufWriter ()
+				.append_varint (1, 1805318279)
+				.append_varint (2, 1)
+				.append_bytes (3, DEVICE_MODEL.data)
+				.append_bytes (4, DEVICE_BUILD.data)
+				.append_bytes (5, DEVICE_HARDWARE.data)
+				.data;
+			uint8[] answer = new ProtobufWriter ()
+				.append_bytes (3, call_info)
+				.data;
+			uint8[] conversation = new ProtobufWriter ()
+				.append_varint (1, 1)
+				.append_varint (2, ACCEPT)
+				.append_varint (3, 1)
+				.append_bytes (4, answer)
+				.append_varint (8, 1)
+				.append_bytes (9, Uuid.string_random ().up ().data)
+				.data;
+
+			var payload = new Plist ();
+			payload.set_string ("p", Uuid.string_random ().up ());
+			payload.set_bytes ("c", new Bytes (conversation));
+			payload.set_boolean ("pclm", true);
+			payload.set_boolean ("mi", true);
+			payload.set_integer ("v", ANSWER_VERSION);
+			payload.set_boolean ("sqr", true);
+			payload.set_boolean ("cc", true);
+			payload.set_string ("s", group_id);
+			return payload.to_binary ();
+		}
+
+		/**
 		 * Build the join-status message a call answer sends: the binary property list that
 		 * declares this device as a joining, non-initiating participant of the call's fanout
 		 * group, naming the group members and this device's participant id so the caller can
 		 * route media to it.
 		 */
 		public static uint8[] build_join_status (string group_id, string[] members,
-				int64 participant_id, uint8[] client_context) {
+				int64 participant_id, uint8[] client_context, uint8[] media_point,
+				uint8[] participant_data) {
 			var group_members = new PlistArray ();
 			foreach (string member in members)
 				group_members.add_string (member);
@@ -240,6 +283,9 @@ namespace Idun {
 			var payload = new Plist ();
 			payload.set_bytes ("client-context-data-key", new Bytes (client_context));
 			payload.set_boolean ("is-initiator-key", false);
+			payload.set_integer ("rtmpwm", MEDIA_WRAP_MODE);
+			payload.set_bytes ("rtmpk", new Bytes (media_point));
+			payload.set_bytes ("participant-data-key", new Bytes (participant_data));
 			payload.set_string ("fanout-groupID-key", group_id);
 			payload.set_array ("fanout-groupMembers-key", group_members);
 			payload.set_boolean ("is-u-plus-one-key", true);
@@ -247,6 +293,58 @@ namespace Idun {
 			payload.set_string ("s", group_id);
 			payload.set_integer ("participant-id-key", participant_id);
 			return payload.to_binary ();
+		}
+
+		/**
+		 * Build the key-material message an answering device sends: its freshly minted media
+		 * and session master keys, each sealed to the peer's advertised media point, together
+		 * with the salts and key indicators the peer needs to bind them to the sender. The
+		 * media key protects the SRTP streams and the session key the control channel.
+		 */
+		public static uint8[] build_key_material (string group_id, string[] uris,
+				int64 participant_id, uint8[] peer_point, uint8[] media_key, uint8[] media_salt,
+				uint8[] session_key_id, uint8[] session_key, uint8[] session_salt) throws Efni.Error {
+			var media = new Plist ();
+			media.set_integer ("participantID", participant_id);
+			media.set_integer ("rtmpwm", MEDIA_WRAP_MODE);
+			media.set_bytes ("mki", new Bytes (FaceTimeMediaCrypto.media_key_indicator (participant_id)));
+			media.set_bytes ("mkm", new Bytes (FaceTimeMediaCrypto.wrap_key_material (peer_point, media_key)));
+			media.set_bytes ("mks", new Bytes (media_salt));
+			media.set_integer ("mkgc", 1);
+			media.set_integer ("smkil", 2);
+
+			var session = new Plist ();
+			session.set_integer ("participantID", participant_id);
+			session.set_integer ("rtmpwm", MEDIA_WRAP_MODE);
+			session.set_bytes ("ski", new Bytes (session_key_id));
+			session.set_bytes ("skm", new Bytes (FaceTimeMediaCrypto.wrap_key_material (peer_point, session_key)));
+			session.set_bytes ("sks", new Bytes (session_salt));
+			session.set_integer ("skgc", 1);
+
+			var all_uris = new PlistArray ();
+			foreach (string uri in uris)
+				all_uris.add_string (uri);
+
+			var payload = new Plist ();
+			payload.set_string ("s", group_id);
+			payload.set_string ("fanout-groupID-key", group_id);
+			payload.set_array ("rtallmkmuri", all_uris);
+			payload.set_dict ("rtmkm", media);
+			payload.set_dict ("rtskm", session);
+			return payload.to_binary ();
+		}
+
+		public static uint8[] build_participant_data (string session_uuid, uint32 audio_ssrc,
+				uint64 ntp_time, uint32 call_id) throws Efni.Error {
+			var data = new FaceTimeParticipantData ();
+			data.session_uuid = session_uuid;
+			data.audio_ssrc = audio_ssrc;
+			data.ntp_time = ntp_time;
+			data.device_type = DEVICE_MODEL;
+			data.framework_version = DEVICE_BUILD;
+			data.os_version = DEVICE_HARDWARE;
+			data.call_id = call_id;
+			return data.build ();
 		}
 
 		private Bytes build_envelope (string caller_uri, Bytes payload) {
@@ -320,10 +418,19 @@ namespace Idun {
 
 		private TetraBinding[] bindings;
 		private Bytes? media_key;
+		private uint32 audio_ssrc;
+		private string session_uuid;
+		private int64 my_participant_id;
+		private Bytes media_master_key;
+		private Bytes media_master_salt;
+		private Bytes session_master_key;
+		private Bytes session_master_salt;
+		private Bytes session_key_id;
 
 		private const int CONVERSATION_MESSAGE = 242;
 		private const int64 PROTOCOL_VERSION = 26006000;
 		private const string MEDIA_TOPIC = "com.apple.private.alloy.facetime.multi";
+		private const string VIDEO_TOPIC = "com.apple.private.alloy.facetime.video";
 		private const uint8[] JOIN_CONTEXT = { 0x10, 0x00 };
 
 		internal FaceTimeCall (ApnsCourier courier, TetraSession session, string handle,
@@ -341,34 +448,94 @@ namespace Idun {
 		 */
 		public async void accept (Cancellable? cancellable = null) throws Efni.Error, IOError {
 			media_key = FaceTimeEndpoint.generate_media_key ();
-			uint8[] announcement = FaceTimeEndpoint.build_media_announcement (group_id,
-				FaceTimeEndpoint.media_public_point (media_key));
-			yield post_sealed (announcement, cancellable);
+			uint8[] media_point = FaceTimeEndpoint.media_public_point (media_key);
+			mint_media_keys ();
 
-			yield post_sealed (build_join_status (), cancellable);
-		}
-
-		private uint8[] build_join_status () throws Efni.Error {
-			Plist invite;
 			try {
-				invite = new Plist.from_data (invitation.get_data ());
-				PlistArray member_list = invite.get_array ("fanout-groupMembers-key");
-				var members = new string[member_list.length];
-				for (int i = 0; i != member_list.length; i++)
-					members[i] = member_list.get_string (i);
+				var invite = new Plist.from_data (invitation.get_data ());
+				string[] members = read_members (invite);
+				my_participant_id = resolve_my_participant_id (invite, members);
+				uint8[] caller_point = invite.get_bytes ("rtmpk").get_data ();
 
-				PlistArray candidates = invite.get_dict ("uri-to-participant-id-key").get_array (handle);
-				var ids = new int64[candidates.length];
-				for (int i = 0; i != candidates.length; i++)
-					ids[i] = candidates.get_integer (i);
+				uint8[] participant_data = FaceTimeEndpoint.build_participant_data (session_uuid,
+					audio_ssrc, ntp_time (), read_call_id (invite));
 
-				int64 participant_id = FaceTimeEndpoint.resolve_participant_id (members, handle,
-					token_hex (courier.push_token), ids);
-				return FaceTimeEndpoint.build_join_status (group_id, members, participant_id,
-					JOIN_CONTEXT);
+				yield post_sealed (FaceTimeEndpoint.build_media_announcement (group_id, media_point),
+					MEDIA_TOPIC, cancellable);
+				yield post_sealed (FaceTimeEndpoint.build_join_status (group_id, members,
+					my_participant_id, JOIN_CONTEXT, media_point, participant_data), MEDIA_TOPIC,
+					cancellable);
+				yield post_sealed (FaceTimeEndpoint.build_key_material (group_id, member_uris (members),
+					my_participant_id, caller_point, media_master_key.get_data (),
+					media_master_salt.get_data (), session_key_id.get_data (),
+					session_master_key.get_data (), session_master_salt.get_data ()), MEDIA_TOPIC,
+					cancellable);
+				yield post_sealed (FaceTimeEndpoint.build_call_answer (group_id), VIDEO_TOPIC,
+					cancellable);
 			} catch (PlistError e) {
 				throw new Efni.Error.PROTOCOL ("Malformed FaceTime invitation: %s", e.message);
 			}
+		}
+
+		private void mint_media_keys () {
+			audio_ssrc = Random.next_int ();
+			session_uuid = Uuid.string_random ().up ();
+			media_master_key = random_bytes (32);
+			media_master_salt = random_bytes (16);
+			session_master_key = random_bytes (32);
+			session_master_salt = random_bytes (16);
+			session_key_id = random_bytes (16);
+		}
+
+		private static Bytes random_bytes (int length) {
+			var data = new uint8[length];
+			OpenSSL.Rng.generate (data);
+			return new Bytes (data);
+		}
+
+		private static uint64 ntp_time () {
+			return ((uint64) (get_real_time () / 1000000 + 2208988800)) << 32;
+		}
+
+		private string[] read_members (Plist invite) throws PlistError {
+			PlistArray member_list = invite.get_array ("fanout-groupMembers-key");
+			var members = new string[member_list.length];
+			for (int i = 0; i != member_list.length; i++)
+				members[i] = member_list.get_string (i);
+			return members;
+		}
+
+		private int64 resolve_my_participant_id (Plist invite, string[] members) throws Efni.Error,
+				PlistError {
+			PlistArray candidates = invite.get_dict ("uri-to-participant-id-key").get_array (handle);
+			var ids = new int64[candidates.length];
+			for (int i = 0; i != candidates.length; i++)
+				ids[i] = candidates.get_integer (i);
+			return FaceTimeEndpoint.resolve_participant_id (members, handle,
+				token_hex (courier.push_token), ids);
+		}
+
+		private static string[] member_uris (string[] members) {
+			var uris = new Gee.ArrayList<string> ();
+			foreach (string member in members) {
+				string uri = member.substring (member.index_of_char ('/') + 1);
+				if (!uris.contains (uri))
+					uris.add (uri);
+			}
+			return uris.to_array ();
+		}
+
+		private static uint32 read_call_id (Plist invite) throws PlistError, Efni.Error {
+			var caller = new Plist.from_binary (invite.get_bytes ("participant-data-key").get_data ());
+			var reader = new ProtobufReader (caller.get_bytes ("vcSessionParticipantKeyCallInfoBlob").get_data ());
+			while (reader.has_more) {
+				uint8 wire_type;
+				int field = reader.read_field (out wire_type);
+				if (field == 1 && wire_type == 0)
+					return (uint32) reader.read_varint ();
+				reader.skip (wire_type);
+			}
+			return 0;
 		}
 
 		private static string token_hex (Bytes token) {
@@ -378,10 +545,10 @@ namespace Idun {
 			return builder.str;
 		}
 
-		private async void post_sealed (uint8[] payload, Cancellable? cancellable)
+		private async void post_sealed (uint8[] payload, string topic, Cancellable? cancellable)
 				throws Efni.Error, IOError {
-			uint8[] sealed = session.seal (payload, MEDIA_TOPIC.data, bindings);
-			yield courier.post (MEDIA_TOPIC, caller_token, build_envelope (sealed), cancellable);
+			uint8[] sealed = session.seal (payload, topic.data, bindings);
+			yield courier.post (topic, caller_token, build_envelope (sealed), cancellable);
 		}
 
 		private Bytes build_envelope (uint8[] payload) {
