@@ -94,8 +94,9 @@ namespace Idun {
 		 * identity supplies the responder half. The returned plaintext is the invitation
 		 * the caller would decline or answer.
 		 */
-		public uint8[] open_tetra_invitation (Variant notification, Gee.Collection<PeerIdentity> senders,
-				NgmIdentity ngm, bool verify = true) throws Efni.Error {
+		public FaceTimeCall open_tetra_invitation (Variant notification,
+				Gee.Collection<PeerIdentity> senders, NgmIdentity ngm, bool verify = true)
+				throws Efni.Error {
 			Variant? payload = notification.lookup_value ("payload", new VariantType ("a{sv}"));
 			if (payload == null)
 				throw new Efni.Error.PROTOCOL ("FaceTime notification carried no payload");
@@ -140,8 +141,18 @@ namespace Idun {
 					new Bytes (ngm.signing_compact_key ()))
 			};
 
-			return session.open (tetra.serialize (), peer.signing_point.get_data (),
+			uint8[] invitation = session.open (tetra.serialize (), peer.signing_point.get_data (),
 				SIGNALING_TOPIC.data, bindings, verify);
+
+			string group_id;
+			try {
+				group_id = new Plist.from_data (invitation).get_string ("fanout-groupID-key");
+			} catch (PlistError e) {
+				throw new Efni.Error.PROTOCOL ("Malformed FaceTime invitation: %s", e.message);
+			}
+
+			return new FaceTimeCall (courier, session, handle, sender.get_string (), caller.push_token,
+				group_id, invitation, bindings);
 		}
 
 		private static PeerIdentity identity_for_token (Gee.Collection<PeerIdentity> senders, Bytes token)
@@ -216,6 +227,100 @@ namespace Idun {
 				.append_bytes (5, group_id.data)
 				.append_varint (7, flag)
 				.data;
+		}
+	}
+
+	/**
+	 * An answerable incoming pair-tetra call: the established Tetra session, the caller's
+	 * routing, and the decrypted invitation. Answering seals its reply sequence back to
+	 * the caller through the same session, so the ratchet that opened the invitation also
+	 * authenticates the answer.
+	 */
+	public sealed class FaceTimeCall : Object {
+		public ApnsCourier courier {
+			get;
+			construct;
+		}
+
+		public TetraSession session {
+			get;
+			construct;
+		}
+
+		public string handle {
+			get;
+			construct;
+		}
+
+		public string caller_uri {
+			get;
+			construct;
+		}
+
+		public Bytes caller_token {
+			get;
+			construct;
+		}
+
+		public string group_id {
+			get;
+			construct;
+		}
+
+		public Bytes invitation {
+			get;
+			construct;
+		}
+
+		private TetraBinding[] bindings;
+		private Bytes? media_key;
+
+		private const int CONVERSATION_MESSAGE = 242;
+		private const int64 PROTOCOL_VERSION = 26006000;
+		private const string MEDIA_TOPIC = "com.apple.private.alloy.facetime.multi";
+
+		internal FaceTimeCall (ApnsCourier courier, TetraSession session, string handle,
+				string caller_uri, Bytes caller_token, string group_id, uint8[] invitation,
+				owned TetraBinding[] bindings) {
+			Object (courier: courier, session: session, handle: handle, caller_uri: caller_uri,
+				caller_token: caller_token, group_id: group_id, invitation: new Bytes (invitation));
+			this.bindings = (owned) bindings;
+		}
+
+		/**
+		 * Answer the call. The device mints its media key and advertises its public point
+		 * to the call's fanout group, so the caller can wrap the media keys to it; the
+		 * remaining key material and media description follow once negotiated.
+		 */
+		public async void accept (Cancellable? cancellable = null) throws Efni.Error, IOError {
+			media_key = FaceTimeEndpoint.generate_media_key ();
+			uint8[] announcement = FaceTimeEndpoint.build_media_announcement (group_id,
+				FaceTimeEndpoint.media_public_point (media_key));
+			yield post_sealed (announcement, cancellable);
+		}
+
+		private async void post_sealed (uint8[] payload, Cancellable? cancellable)
+				throws Efni.Error, IOError {
+			uint8[] sealed = session.seal (payload, MEDIA_TOPIC.data, bindings);
+			yield courier.post (MEDIA_TOPIC, caller_token, build_envelope (sealed), cancellable);
+		}
+
+		private Bytes build_envelope (uint8[] payload) {
+			var conversation_id = new uint8[16];
+			OpenSSL.Rng.generate (conversation_id);
+
+			var envelope = new Plist ();
+			envelope.set_integer ("c", CONVERSATION_MESSAGE);
+			envelope.set_string ("E", "pair-tetra");
+			envelope.set_string ("sP", handle);
+			envelope.set_string ("tP", caller_uri);
+			envelope.set_bytes ("t", courier.push_token);
+			envelope.set_bytes ("U", new Bytes (conversation_id));
+			envelope.set_bytes ("P", new Bytes (payload));
+			envelope.set_integer ("e", get_real_time () * 1000);
+			envelope.set_integer ("v", PROTOCOL_VERSION);
+			envelope.set_integer ("siu", 0);
+			return new Bytes (envelope.to_xml ().data);
 		}
 	}
 

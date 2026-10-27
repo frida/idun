@@ -106,15 +106,16 @@ namespace Idun.Examples {
 				return;
 			}
 
-			uint8[] plaintext;
+			FaceTimeCall call;
 			bool verified = true;
 			try {
-				plaintext = endpoint.open_tetra_invitation (notification, senders, ngm);
+				call = endpoint.open_tetra_invitation (notification, senders, ngm);
 			} catch (Efni.Error e) {
 				print ("  signature unverified (%s); decrypting without verification\n", e.message);
 				verified = false;
-				plaintext = endpoint.open_tetra_invitation (notification, senders, ngm, false);
+				call = endpoint.open_tetra_invitation (notification, senders, ngm, false);
 			}
+			uint8[] plaintext = call.invitation.get_data ();
 			bool bplist = plaintext.length >= 8 &&
 				(string) plaintext[0 : 8] == "bplist00";
 			print ("  *** DECRYPTED pair-tetra invitation: %d bytes%s (signature %s) ***\n",
@@ -125,6 +126,9 @@ namespace Idun.Examples {
 				print ("  wrote plaintext to %s\n", path);
 			} catch (FileError e) {
 			}
+
+			yield call.accept ();
+			print ("  sent call answer (media announcement for group %s)\n", call.group_id);
 		} catch (GLib.Error e) {
 			print ("  pair-tetra decrypt failed: %s\n", e.message);
 		}
