@@ -13,7 +13,37 @@ namespace Idun {
 	public sealed class FaceTimeMediaCrypto {
 		private const int POINT_LENGTH = 65;
 		private const int WRAP_KEY_LENGTH = 32;
+		private const int SRTP_KEY_LENGTH = 30;
+		private const int CONTROL_KEY_LENGTH = 32;
 		private const string WRAP_INFO = "GFT-MKM-Wrapping";
+		private const string CONTROL_INFO = "VCControlChannelV2";
+
+		/**
+		 * The SRTP master key (key and salt) that protects one stream, derived from a
+		 * media key and its salt for the stream's synchronisation source. Each SSRC takes
+		 * its own key, so the sender's and each receiver's streams never share one.
+		 */
+		public static uint8[] media_stream_key (uint8[] media_key, uint8[] media_salt, uint32 ssrc)
+				throws Efni.Error {
+			var info = new BufferBuilder (LITTLE_ENDIAN);
+			info.append_uint32 (ssrc);
+			return TetraCrypto.hkdf_extract_and_expand (ShortName.sha256, media_key, media_salt,
+				info.build ().get_data (), SRTP_KEY_LENGTH);
+		}
+
+		/**
+		 * The key that protects a call's control channel between two participants, bound
+		 * to both of their session-participant identifiers so each pair derives its own.
+		 */
+		public static uint8[] control_channel_key (uint8[] media_key, uint8[] media_salt,
+				uint8[] our_uuid, uint8[] peer_uuid) throws Efni.Error {
+			var info = new BufferBuilder ();
+			info.append_data (CONTROL_INFO.data);
+			info.append_data (our_uuid);
+			info.append_data (peer_uuid);
+			return TetraCrypto.hkdf_extract_and_expand (ShortName.sha256, media_key, media_salt,
+				info.build ().get_data (), CONTROL_KEY_LENGTH);
+		}
 
 		public static uint8[] wrap_key_material (uint8[] peer_point, uint8[] material) throws Efni.Error {
 			Bytes ephemeral = TetraCrypto.generate_key_agreement_key ();

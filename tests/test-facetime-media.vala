@@ -4,7 +4,36 @@ namespace Idun.FaceTimeMediaTest {
 	public void add_tests () {
 		GLib.Test.add_func ("/FaceTimeMedia/unwraps-known-answer", unwraps_known_answer);
 		GLib.Test.add_func ("/FaceTimeMedia/wraps-and-unwraps-roundtrip", wraps_and_unwraps_roundtrip);
+		GLib.Test.add_func ("/FaceTimeMedia/derives-stream-key", derives_stream_key);
+		GLib.Test.add_func ("/FaceTimeMedia/derives-control-key", derives_control_key);
 	}
+
+	private void derives_stream_key () {
+		try {
+			uint8[] key = FaceTimeMediaCrypto.media_stream_key (decode_hex (MKM), decode_hex (MKS),
+				0x12345678);
+			assert_true (new Bytes (key).compare (new Bytes (decode_hex (STREAM_KEY))) == 0);
+		} catch (Efni.Error e) {
+			assert_not_reached ();
+		}
+	}
+
+	private void derives_control_key () {
+		try {
+			uint8[] key = FaceTimeMediaCrypto.control_channel_key (decode_hex (MKM), decode_hex (MKS),
+				decode_hex (OUR_UUID), decode_hex (PEER_UUID));
+			assert_true (new Bytes (key).compare (new Bytes (decode_hex (CONTROL_KEY))) == 0);
+		} catch (Efni.Error e) {
+			assert_not_reached ();
+		}
+	}
+
+	private const string MKM = "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f";
+	private const string MKS = "a0a1a2a3a4a5a6a7a8a9aaabacadaeaf";
+	private const string STREAM_KEY = "3b6b555f7cefa721dff4a270178f590e52858c2cf89cace2413976793047";
+	private const string OUR_UUID = "8d633dfb392c44c89fd0c714cd298c2d";
+	private const string PEER_UUID = "2cc7da488aa741ea96623f0027efec63";
+	private const string CONTROL_KEY = "7d204e272e40610471ff9c00ae8688e84d82cd35c201019f27f42618c179b8b2";
 
 	private void unwraps_known_answer () {
 		try {
