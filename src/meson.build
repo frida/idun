@@ -150,7 +150,10 @@ idun_dep = declare_dependency(
   link_args: platform_link_args,
   link_with: idun,
   dependencies: [glib_dep, gobject_dep, gio_dep, gee_dep, json_glib_dep, efni_dep] + platform_deps,
-  variables: {'vapidir': local_vapidir},
+  variables: {
+    'vapidir': local_vapidir,
+    'vala_packages': ' '.join(vapi_packages),
+  },
 )
 
 meson.override_dependency(f'idun-@api_version@', idun_dep)

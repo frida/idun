@@ -46,6 +46,7 @@ platform_reqs = []
 platform_vala_args = []
 platform_link_args = []
 vala_defines = []
+vapi_packages = ['gio-2.0', 'gee-0.8']
 
 if host_os_family == 'windows'
   platform_deps += dependency('gio-windows-2.0')
@@ -90,6 +91,7 @@ if host_os != 'macos'
   ])
   platform_reqs += 'libsoup-3.0'
   platform_vala_args += '--pkg=libsoup-3.0'
+  vapi_packages += 'libsoup-3.0'
 
   platform_deps += dependency('libngtcp2', default_options: ['default_library=static'])
   platform_reqs += 'libngtcp2'
