@@ -96,6 +96,10 @@ if host_os != 'macos'
   platform_reqs += 'libngtcp2'
   platform_vala_args += '--pkg=libngtcp2'
 
+  platform_deps += dependency('libnghttp3', default_options: ['default_library=static'])
+  platform_reqs += 'libnghttp3'
+  platform_vala_args += '--pkg=libnghttp3'
+
   ngtcp2_crypto_quictls_dep = dependency('libngtcp2_crypto_quictls', required: false, default_options: ['default_library=static'])
   if ngtcp2_crypto_quictls_dep.found()
     platform_deps += ngtcp2_crypto_quictls_dep
