@@ -2,7 +2,16 @@
 namespace NGTcp2.Crypto {
 	[CCode (cheader_filename = "ngtcp2/ngtcp2_crypto_ossl.h")]
 	namespace Ossl {
+		public int init ();
 		public int configure_client_session (void * ssl);
+
+		[Compact]
+		[CCode (cname = "ngtcp2_crypto_ossl_ctx", cprefix = "ngtcp2_crypto_ossl_ctx_",
+			free_function = "ngtcp2_crypto_ossl_ctx_del")]
+		public class Context {
+			[CCode (cname = "ngtcp2_crypto_ossl_ctx_new")]
+			public static int create (out Context ctx, void * ssl);
+		}
 	}
 
 	[CCode (cname = "ngtcp2_crypto_conn_ref", has_destroy_function = false)]
