@@ -31,6 +31,57 @@ namespace Idun {
 			return request.to_binary ();
 		}
 
+		/**
+		 * The external pre-shared key the relay's QUIC handshake authenticates with,
+		 * derived from the allocation's session key under a client-chosen salt. The salt
+		 * travels in the identity so the relay can rederive the same key.
+		 */
+		public static uint8[] derive_quic_psk (Bytes session_key, uint8[] salt) throws Efni.Error {
+			return hkdf (session_key.get_data (), salt, "QR-QUIC-V0".data, 32);
+		}
+
+		public static uint8[] build_quic_psk_identity (uint8[] salt, Bytes session_token) {
+			var identity = new BufferBuilder ();
+			identity.append_uint8 (0);
+			identity.append_data (salt);
+			identity.append_bytes (session_token);
+			return identity.build ().get_data ();
+		}
+
+		/**
+		 * The hop-by-hop key protecting this device's media to the relay, bound to the
+		 * relay and this device so each link derives its own.
+		 */
+		public static uint8[] derive_hop_key (Bytes session_key, uint8[] salt, Bytes relay_id,
+				int64 participant_id) throws Efni.Error {
+			return hkdf (session_key.get_data (), salt,
+				relay_context ("QR-HBH-KDF", relay_id, participant_id), 64);
+		}
+
+		/**
+		 * The session key material the relay's participant map is keyed from, so a device
+		 * can resolve the relay's mapped participant ids back to the call's own.
+		 */
+		public static uint8[] derive_session_key_material (Bytes session_key, uint8[] salt,
+				Bytes relay_id, int64 participant_id) throws Efni.Error {
+			return hkdf (session_key.get_data (), salt,
+				relay_context ("QuickRelay KDF", relay_id, participant_id), 48);
+		}
+
+		private static uint8[] relay_context (string label, Bytes relay_id, int64 participant_id) {
+			var info = new BufferBuilder (BIG_ENDIAN);
+			info.append_data (label.data);
+			info.append_bytes (relay_id);
+			info.append_uint64 (participant_id);
+			return info.build ().get_data ();
+		}
+
+		private static uint8[] hkdf (uint8[] session_key, uint8[] salt, uint8[] info, int length)
+				throws Efni.Error {
+			return TetraCrypto.hkdf_extract_and_expand (OpenSSL.ShortName.sha256, session_key, salt,
+				info, length);
+		}
+
 		public static uint8[] uuid_to_bytes (string uuid) throws Efni.Error {
 			var bytes = new uint8[16];
 			int written = 0;

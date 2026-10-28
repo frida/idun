@@ -10,7 +10,36 @@ namespace Idun.FaceTimeMediaTest {
 		GLib.Test.add_func ("/FaceTimeMedia/builds-allocation-request", builds_allocation_request);
 		GLib.Test.add_func ("/FaceTimeMedia/parses-allocation", parses_allocation);
 		GLib.Test.add_func ("/FaceTimeMedia/round-trips-materials", round_trips_materials);
+		GLib.Test.add_func ("/FaceTimeMedia/derives-relay-keys", derives_relay_keys);
 	}
+
+	private void derives_relay_keys () {
+		try {
+			var session_key = new Bytes (decode_hex ("1112131415161718191a1b1c1d1e1f2021222324"));
+			uint8[] salt = decode_hex ("0102030405060708090a0b0c");
+			var relay_id = new Bytes (decode_hex ("aabbccdd"));
+			int64 my_id = 5381388041397867410;
+
+			uint8[] psk = FaceTimeQuickRelay.derive_quic_psk (session_key, salt);
+			assert_true (new Bytes (psk).compare (new Bytes (decode_hex (PSK_KEY))) == 0);
+
+			uint8[] hbh = FaceTimeQuickRelay.derive_hop_key (session_key, salt, relay_id, my_id);
+			assert_true (new Bytes (hbh).compare (new Bytes (decode_hex (HBH_KEY))) == 0);
+
+			uint8[] skm = FaceTimeQuickRelay.derive_session_key_material (session_key, salt, relay_id, my_id);
+			assert_true (new Bytes (skm).compare (new Bytes (decode_hex (SESSION_MATERIAL))) == 0);
+
+			uint8[] identity = FaceTimeQuickRelay.build_quic_psk_identity (salt,
+				new Bytes (decode_hex ("cafebabe")));
+			assert_true (new Bytes (identity).compare (new Bytes (decode_hex ("000102030405060708090a0b0ccafebabe"))) == 0);
+		} catch (Efni.Error e) {
+			assert_not_reached ();
+		}
+	}
+
+	private const string PSK_KEY = "6a0cc26e54143042f696122623cfb7fd94dec1b80887cc88aab781ce6fa725f9";
+	private const string HBH_KEY = "424128d924b09c1679bf1fd0eb105cddf5e7e92a71e3d1d6eae6ea37163547ac893f798b540a625da7e4101e30c4358aba49d4176acc5e78ca246cd8c94fcd8e";
+	private const string SESSION_MATERIAL = "ffa912d3752e961f35a6ccbb0a2a3a2591c2c81fb696eadbe6df2f439b52f113b17d94068f301fd81b6b1b03c19c92d9";
 
 	private void round_trips_materials () {
 		try {
