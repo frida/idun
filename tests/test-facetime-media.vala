@@ -7,6 +7,52 @@ namespace Idun.FaceTimeMediaTest {
 		GLib.Test.add_func ("/FaceTimeMedia/derives-stream-key", derives_stream_key);
 		GLib.Test.add_func ("/FaceTimeMedia/derives-control-key", derives_control_key);
 		GLib.Test.add_func ("/FaceTimeMedia/builds-participant-data", builds_participant_data);
+		GLib.Test.add_func ("/FaceTimeMedia/builds-allocation-request", builds_allocation_request);
+		GLib.Test.add_func ("/FaceTimeMedia/parses-allocation", parses_allocation);
+	}
+
+	private void builds_allocation_request () {
+		try {
+			string group = "48A5EC09-8558-430D-BE87-DEA28AA04125";
+			uint8[] request_id = decode_hex ("0102030405060708090a0b0c0d0e0f10");
+			uint8[] token = { 0xaa, 0xbb, 0xcc, 0xdd };
+			uint8[] request = FaceTimeQuickRelay.build_allocation_request (group, 2,
+				"mailto:oravnas@gmail.com", new Bytes (token), request_id);
+
+			var parsed = new Plist.from_data (request);
+			assert_true (parsed.get_integer ("c") == 200);
+			assert_true (parsed.get_integer ("qat") == 3);
+			assert_true (parsed.get_integer ("qgmc") == 2);
+			assert_true (parsed.get_string ("qgid") == group);
+			assert_true (parsed.get_string ("qai") == "com.apple.private.alloy.facetime.multi");
+			assert_true (parsed.get_bytes ("U").compare (new Bytes (request_id)) == 0);
+			assert_true (parsed.get_bytes ("qids").compare (new Bytes (decode_hex ("48a5ec098558430dbe87dea28aa04125"))) == 0);
+		} catch (GLib.Error e) {
+			assert_not_reached ();
+		}
+	}
+
+	private void parses_allocation () {
+		try {
+			uint8[] request_id = decode_hex ("0102030405060708090a0b0c0d0e0f10");
+			var payload = new Plist ();
+			payload.set_bytes ("U", new Bytes (request_id));
+			payload.set_bytes ("qrip", new Bytes (decode_hex ("11223344")));
+			payload.set_integer ("qrp", 16385);
+			payload.set_bytes ("qrst", new Bytes (decode_hex ("aabb")));
+			payload.set_bytes ("qrsk", new Bytes (decode_hex ("ccdd")));
+			payload.set_bytes ("qids", new Bytes (decode_hex ("48a5ec098558430dbe87dea28aa04125")));
+			payload.set_bytes ("qrsi", new Bytes (decode_hex ("eeff")));
+			payload.set_integer ("qri", 9059439406325963308);
+
+			var allocation = FaceTimeAllocation.parse (payload.to_binary ());
+			assert_true (allocation.answers (request_id));
+			assert_true (allocation.relay_port == 16385);
+			assert_true (allocation.participant_id == 9059439406325963308);
+			assert_true (allocation.relay_ip.compare (new Bytes (decode_hex ("11223344"))) == 0);
+		} catch (GLib.Error e) {
+			assert_not_reached ();
+		}
 	}
 
 	private void builds_participant_data () {

@@ -81,6 +81,7 @@ if host_os != 'macos'
     'identity' / 'facetime.vala',
     'identity' / 'facetime-media.vala',
     'identity' / 'facetime-participant-data.vala',
+    'identity' / 'facetime-quickrelay.vala',
     'identity' / 'identity-oracle.vala',
     'identity' / 'apple-root-ca.vala',
   ]
