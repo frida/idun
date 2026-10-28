@@ -444,6 +444,9 @@ namespace Idun {
 		private NGTcp2.Crypto.ConnectionRef connection_ref;
 		private OpenSSL.SSLContext ssl_ctx;
 		private OpenSSL.SSL ssl;
+#if HAVE_NGTCP2_CRYPTO_OSSL
+		private NGTcp2.Crypto.Ossl.Context ossl_ctx;
+#endif
 
 		private MainContext main_context;
 
@@ -509,6 +512,8 @@ namespace Idun {
 
 			ssl = new OpenSSL.SSL (ssl_ctx);
 #if HAVE_NGTCP2_CRYPTO_OSSL
+			NGTcp2.Crypto.Ossl.init ();
+			NGTcp2.Crypto.Ossl.Context.create (out ossl_ctx, ssl);
 			NGTcp2.Crypto.Ossl.configure_client_session (ssl);
 #endif
 			ssl.set_app_data (&connection_ref);
@@ -592,7 +597,11 @@ namespace Idun {
 
 			NGTcp2.Connection.make_client (out connection, dcid, scid, path, NGTcp2.ProtocolVersion.V1, callbacks,
 				settings, transport_params, null, this);
+#if HAVE_NGTCP2_CRYPTO_OSSL
+			connection.set_tls_native_handle (ossl_ctx);
+#else
 			connection.set_tls_native_handle (ssl);
+#endif
 			connection.set_keep_alive_timeout (KEEP_ALIVE_TIMEOUT);
 
 			rx_source = socket.datagram_based.create_source (IOCondition.IN, io_cancellable);
@@ -641,6 +650,7 @@ namespace Idun {
 				return;
 
 			connection = null;
+			ssl.set_app_data (null);
 			socket = null;
 
 			io_cancellable.cancel ();
