@@ -25,6 +25,9 @@ namespace OpenSSL {
 		public int set_cipher_list (string str);
 		public int set_alpn_protos (uint8[] protos);
 		public void set_psk_client_callback (PskClientCallback callback);
+		public void set_psk_use_session_callback (PskUseSessionCallback callback);
+		[CCode (cname = "SSL_CIPHER_find")]
+		public unowned SSLCipher? find_cipher ([CCode (array_length = false)] uint8[] id);
 
 		public void set_quic_transport_version (int version);
 
@@ -53,6 +56,30 @@ namespace OpenSSL {
 
 	[CCode (has_target = false)]
 	public delegate uint PskClientCallback (SSL ssl, string? hint, char[] identity, uint8[] psk);
+
+	[CCode (has_target = false)]
+	public delegate int PskUseSessionCallback (SSL ssl, Envelope.MessageDigest? md,
+		out uint8 * id, out size_t idlen, out SSLSession? session);
+
+	[Compact]
+	[CCode (cheader_filename = "openssl/ssl.h", cname = "SSL_SESSION", cprefix = "SSL_SESSION_",
+		free_function = "SSL_SESSION_free")]
+	public class SSLSession {
+		[CCode (cname = "SSL_SESSION_new")]
+		public SSLSession ();
+		public int set_cipher (SSLCipher cipher);
+		public int set_protocol_version (int version);
+		[CCode (cname = "SSL_SESSION_set1_master_key")]
+		public int set_master_key (uint8[] key);
+	}
+
+	[Compact]
+	[CCode (cheader_filename = "openssl/ssl.h", cname = "SSL_CIPHER", free_function = "")]
+	public class SSLCipher {
+	}
+
+	[CCode (cname = "TLS1_3_VERSION", cheader_filename = "openssl/ssl.h")]
+	public const int TLS1_3_VERSION;
 
 	[Compact]
 	[CCode (cheader_filename = "openssl/ssl.h", cname = "SSL_METHOD", cprefix = "SSL_METHOD_", free_function = "")]
@@ -244,6 +271,10 @@ namespace OpenSSL {
 			public Key.from_raw_public_key (KeyType type, Engine? engine, uint8[] pub);
 			[CCode (cname = "EVP_EC_gen")]
 			public Key.generate_ec (string curve);
+			[CCode (cname = "EVP_PKEY_new")]
+			public Key ();
+			[CCode (cname = "EVP_PKEY_set1_EC_KEY")]
+			public int set1_ec_key (EcKey key);
 			[CCode (cname = "d2i_PublicKey")]
 			public Key.from_legacy_public_der (KeyType type, void* unused, uint8** der, long length);
 
@@ -393,6 +424,15 @@ namespace OpenSSL {
 			public int encrypt_update ([CCode (array_length = false)] uint8[] output, ref int outlen, uint8[] input);
 			[CCode (cname = "EVP_EncryptFinal")]
 			public int encrypt_final ([CCode (array_length = false)] uint8[] output, ref int outlen);
+
+			[CCode (cname = "EVP_EncryptInit_ex")]
+			public int encrypt_init_ex (Cipher? cipher, Engine? engine = null,
+				[CCode (array_length = false)] uint8[]? key = null,
+				[CCode (array_length = false)] uint8[]? iv = null);
+			[CCode (cname = "EVP_DecryptInit_ex")]
+			public int decrypt_init_ex (Cipher? cipher, Engine? engine = null,
+				[CCode (array_length = false)] uint8[]? key = null,
+				[CCode (array_length = false)] uint8[]? iv = null);
 
 			[CCode (cname = "EVP_DecryptInit")]
 			public int decrypt_init (Cipher cipher,
@@ -583,6 +623,53 @@ namespace OpenSSL {
 	public class BigNumberContext {
 		[CCode (cname = "BN_CTX_secure_new")]
 		public BigNumberContext.secure ();
+	}
+
+	[CCode (cheader_filename = "openssl/obj_mac.h", cname = "NID_secp384r1")]
+	public const int NID_secp384r1;
+
+	[CCode (cheader_filename = "openssl/ec.h", cname = "point_conversion_form_t", has_type_id = false)]
+	public enum PointConversionForm {
+		[CCode (cname = "POINT_CONVERSION_COMPRESSED")]
+		COMPRESSED,
+		[CCode (cname = "POINT_CONVERSION_UNCOMPRESSED")]
+		UNCOMPRESSED,
+		[CCode (cname = "POINT_CONVERSION_HYBRID")]
+		HYBRID,
+	}
+
+	[Compact]
+	[CCode (cheader_filename = "openssl/ec.h", cname = "EC_GROUP", free_function = "EC_GROUP_free")]
+	public class EcGroup {
+		[CCode (cname = "EC_GROUP_new_by_curve_name")]
+		public EcGroup.by_curve_name (int nid);
+		[CCode (cname = "EC_GROUP_get0_order")]
+		public unowned BigNumber get0_order ();
+	}
+
+	[Compact]
+	[CCode (cheader_filename = "openssl/ec.h", cname = "EC_POINT", free_function = "EC_POINT_free")]
+	public class EcPoint {
+		[CCode (cname = "EC_POINT_new")]
+		public EcPoint (EcGroup group);
+		[CCode (cname = "EC_POINT_mul", instance_pos = 1.5)]
+		public int mul (EcGroup group, BigNumber? n, EcPoint? q, BigNumber? m, BigNumberContext ctx);
+		[CCode (cname = "EC_POINT_point2oct", instance_pos = 1.5)]
+		public size_t point2oct (EcGroup group, PointConversionForm form,
+			[CCode (array_length = false)] uint8[]? buf, size_t len, BigNumberContext ctx);
+	}
+
+	[Compact]
+	[CCode (cheader_filename = "openssl/ec.h", cname = "EC_KEY", free_function = "EC_KEY_free")]
+	public class EcKey {
+		[CCode (cname = "EC_KEY_new_by_curve_name")]
+		public EcKey.by_curve_name (int nid);
+		[CCode (cname = "EC_KEY_get0_group")]
+		public unowned EcGroup get0_group ();
+		[CCode (cname = "EC_KEY_set_private_key")]
+		public int set_private_key (BigNumber priv);
+		[CCode (cname = "EC_KEY_set_public_key")]
+		public int set_public_key (EcPoint pub);
 	}
 
 	[Compact]
