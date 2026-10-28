@@ -9,6 +9,44 @@ namespace Idun.FaceTimeMediaTest {
 		GLib.Test.add_func ("/FaceTimeMedia/builds-participant-data", builds_participant_data);
 		GLib.Test.add_func ("/FaceTimeMedia/builds-allocation-request", builds_allocation_request);
 		GLib.Test.add_func ("/FaceTimeMedia/parses-allocation", parses_allocation);
+		GLib.Test.add_func ("/FaceTimeMedia/round-trips-materials", round_trips_materials);
+	}
+
+	private void round_trips_materials () {
+		try {
+			var prekey = new FaceTimeMaterial () {
+				material_type = FaceTimeMaterial.PREKEY,
+				material_id = decode_hex ("0010112233445566778899aabbccddee"),
+				material_content = decode_hex ("deadbeef"),
+				receiver_participant_id = 5381388041397867410
+			};
+			var media = new FaceTimeMaterial () {
+				material_type = FaceTimeMaterial.MEDIA_KEY,
+				material_id = decode_hex ("aabb"),
+				material_content = decode_hex ("cafe"),
+				owner_participant_id = 1234,
+				receiver_participant_id = 5678
+			};
+
+			uint8[] put = FaceTimeRelayProtocol.build_put_material ({ prekey, media });
+			FaceTimeMaterial[] read = FaceTimeRelayProtocol.read_materials (put);
+			assert_true (read.length == 2);
+			assert_true (read[0].material_type == FaceTimeMaterial.PREKEY);
+			assert_true (new Bytes (read[0].material_id).compare (new Bytes (prekey.material_id)) == 0);
+			assert_true (read[1].owner_participant_id == 1234);
+			assert_true (read[1].receiver_participant_id == 5678);
+			assert_true (new Bytes (read[1].material_content).compare (new Bytes (media.material_content)) == 0);
+
+			uint8[] allocbind = FaceTimeRelayProtocol.build_allocbind (decode_hex ("01020304"),
+				decode_hex ("05060708"), { prekey });
+			FaceTimeMaterial[] in_bind = FaceTimeRelayProtocol.read_materials (allocbind);
+			assert_true (in_bind.length == 0);
+			var envelope = new ProtobufReader (allocbind);
+			uint8 wire_type;
+			assert_true (envelope.read_field (out wire_type) == 1 && wire_type == 2);
+		} catch (Efni.Error e) {
+			assert_not_reached ();
+		}
 	}
 
 	private void builds_allocation_request () {
