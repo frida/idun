@@ -431,6 +431,7 @@ namespace Idun {
 		private const int64 PROTOCOL_VERSION = 26006000;
 		private const string MEDIA_TOPIC = "com.apple.private.alloy.facetime.multi";
 		private const string VIDEO_TOPIC = "com.apple.private.alloy.facetime.video";
+		private const string QUICKRELAY_TOPIC = "com.apple.private.alloy.quickrelay";
 		private const uint8[] JOIN_CONTEXT = { 0x10, 0x00 };
 
 		internal FaceTimeCall (ApnsCourier courier, TetraSession session, string handle,
@@ -459,6 +460,11 @@ namespace Idun {
 
 				uint8[] participant_data = FaceTimeEndpoint.build_participant_data (session_uuid,
 					audio_ssrc, ntp_time (), read_call_id (invite));
+
+				uint8[] allocation_request_id = random_bytes (16).get_data ();
+				yield courier.post (QUICKRELAY_TOPIC, caller_token,
+					new Bytes (FaceTimeQuickRelay.build_allocation_request (group_id, members.length,
+						handle, courier.push_token, allocation_request_id)), cancellable);
 
 				yield post_sealed (FaceTimeEndpoint.build_media_announcement (group_id, media_point),
 					MEDIA_TOPIC, cancellable);

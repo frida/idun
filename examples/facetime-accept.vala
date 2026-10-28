@@ -152,6 +152,18 @@ namespace Idun.Examples {
 
 		if (envelope != null && envelope.get_string () == "pair-tetra")
 			dump_pair_tetra (payload);
+
+		Variant? relay_ip = payload.lookup_value ("qrip", new VariantType ("ay"));
+		if (relay_ip != null) {
+			Variant? relay_port = payload.lookup_value ("qrp", VariantType.INT64);
+			Variant? relay_participant = payload.lookup_value ("qri", VariantType.INT64);
+			uint8[] ip = relay_ip.get_data_as_bytes ().get_data ();
+			print ("  *** QuickRelay allocation: relay %u.%u.%u.%u:%" + int64.FORMAT_MODIFIER
+				+ "d participant=%" + int64.FORMAT_MODIFIER + "d ***\n",
+				ip[0], ip[1], ip[2], ip[3],
+				relay_port != null ? relay_port.get_int64 () : -1,
+				relay_participant != null ? relay_participant.get_int64 () : -1);
+		}
 	}
 
 	private void dump_pair_tetra (Variant payload) {
