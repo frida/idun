@@ -39,14 +39,22 @@ json_glib_dep = dependency('json-glib-1.0', version: '>=1.8', default_options: [
   'nls=disabled',
 ])
 efni_dep = dependency('efni-1.0', default_options: ['default_library=static'])
-add_project_arguments('--vapidir=' + efni_dep.get_variable('vapidir'), language: 'vala')
+efni_vala_packages = efni_dep.get_variable('vala_packages', default_value: '').split()
+efni_vala_flags = ['--vapidir=' + efni_dep.get_variable('vapidir')]
+foreach pkg : efni_vala_packages
+  efni_vala_flags += '--pkg=' + pkg
+endforeach
+add_project_arguments(efni_vala_flags, language: 'vala')
 
 platform_deps = []
 platform_reqs = []
 platform_vala_args = []
 platform_link_args = []
 vala_defines = []
-vapi_packages = ['gio-2.0', 'gee-0.8']
+vapi_packages = ['gio-2.0'] + efni_vala_packages
+if gee_dep.type_name() != 'internal'
+  vapi_packages += 'gee-0.8'
+endif
 
 if host_os_family == 'windows'
   platform_deps += dependency('gio-windows-2.0')
