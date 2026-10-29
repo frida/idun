@@ -281,6 +281,3 @@ endif
 if build_tests
   subdir('tests')
 endif
-if host_os_family == 'darwin'
-  subdir('mac-helper')
-endif
