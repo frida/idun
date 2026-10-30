@@ -110,14 +110,18 @@ namespace Idun {
 #if WINDOWS
 			var output = new DataInputStream (Daemon._spawn (path));
 #else
-			Subprocess process;
+			string[] argv = { path, "--background" };
+			Pid pid;
+			int stdout_fd;
 			try {
-				process = new Subprocess (STDOUT_PIPE, path, "--background");
-			} catch (GLib.Error e) {
+				Process.spawn_async_with_pipes (null, argv, null,
+					SpawnFlags.SEARCH_PATH | /* SpawnFlags.CLOEXEC_PIPES */ 256, null,
+					out pid, null, out stdout_fd);
+			} catch (SpawnError e) {
 				throw new Efni.Error.NOT_SUPPORTED ("Unable to start idund: %s", e.message);
 			}
 
-			var output = new DataInputStream (process.get_stdout_pipe ());
+			var output = new DataInputStream (new UnixInputStream (stdout_fd, true));
 #endif
 			output.newline_type = ANY;
 			var timeout = new Cancellable ();
