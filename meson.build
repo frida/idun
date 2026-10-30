@@ -117,7 +117,7 @@ if host_os != 'macos'
     vala_defines += 'HAVE_NGTCP2_CRYPTO_OSSL'
   endif
 
-  platform_deps += dependency('libusb-1.0', default_options: [
+  platform_deps += dependency('libusb-1.0', version: '>=1.0.30', default_options: [
     'default_library=static',
     'examples=disabled',
     'tests=disabled',
