@@ -175,6 +175,10 @@ endif
 foreach d : vala_defines
   vala_flags += '--define=' + d
 endforeach
+if glib_dep.type_name() == 'pkgconfig'
+  glib_version = glib_dep.version().split('.')
+  vala_flags += '--target-glib=@0@.@1@'.format(glib_version[0], glib_version[1])
+endif
 if gee_dep.type_name() not in ['internal', 'cmake']
   gee_prefix = gee_dep.get_variable('prefix', default_value: '')
   if gee_prefix != ''

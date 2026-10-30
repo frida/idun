@@ -1733,7 +1733,11 @@ namespace Idun {
 
 	private sealed class PairingParamsParser {
 		private BufferReader reader;
+#if GLIB_2_84
 		private unowned EnumClass param_type_class;
+#else
+		private EnumClass param_type_class;
+#endif
 
 		public static Variant parse (Bytes pairing_params) throws Efni.Error {
 			var parser = new PairingParamsParser (pairing_params);
@@ -1742,7 +1746,11 @@ namespace Idun {
 
 		private PairingParamsParser (Bytes bytes) {
 			reader = new BufferReader (new Buffer (bytes, LITTLE_ENDIAN));
+#if GLIB_2_84
 			param_type_class = (EnumClass) typeof (PairingParamType).class_get ();
+#else
+			param_type_class = (EnumClass) typeof (PairingParamType).class_ref ();
+#endif
 		}
 
 		private Variant read_params () throws Efni.Error {

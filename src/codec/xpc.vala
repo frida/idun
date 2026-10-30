@@ -78,7 +78,11 @@ namespace Idun {
 				throw new Efni.Error.INVALID_ARGUMENT ("Invalid message: unsupported protocol version (%u)", protocol_version);
 
 			var raw_message_type = buf.read_uint8 (5);
+#if GLIB_2_84
 			unowned EnumClass message_type_class = (EnumClass) typeof (MessageType).class_get ();
+#else
+			EnumClass message_type_class = (EnumClass) typeof (MessageType).class_ref ();
+#endif
 			if (message_type_class.get_value (raw_message_type) == null)
 				throw new Efni.Error.INVALID_ARGUMENT ("Invalid message: unsupported message type (0x%x)", raw_message_type);
 			var message_type = (MessageType) raw_message_type;
@@ -141,7 +145,11 @@ namespace Idun {
 
 			var result = new StringBuilder.sized (128);
 
+#if GLIB_2_84
 			unowned FlagsClass klass = (FlagsClass) typeof (MessageFlags).class_get ();
+#else
+			FlagsClass klass = (FlagsClass) typeof (MessageFlags).class_ref ();
+#endif
 			foreach (FlagsValue fv in klass.values) {
 				if ((remainder & fv.value) != 0) {
 					if (result.len != 0)
@@ -386,12 +394,20 @@ namespace Idun {
 	private sealed class XpcObjectParser {
 		private Buffer buf;
 		private size_t cursor;
+#if GLIB_2_84
 		private unowned EnumClass object_type_class;
+#else
+		private EnumClass object_type_class;
+#endif
 
 		public XpcObjectParser (Buffer buf, uint cursor) {
 			this.buf = buf;
 			this.cursor = cursor;
+#if GLIB_2_84
 			this.object_type_class = (EnumClass) typeof (ObjectType).class_get ();
+#else
+			this.object_type_class = (EnumClass) typeof (ObjectType).class_ref ();
+#endif
 		}
 
 		public Variant read_object () throws Efni.Error {
