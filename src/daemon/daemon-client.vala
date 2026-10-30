@@ -110,11 +110,6 @@ namespace Idun {
 #if WINDOWS
 			var output = new DataInputStream (Daemon._spawn (path));
 #else
-			/*
-			 * Without DO_NOT_REAP_CHILD, GLib double-forks so idund doesn't become
-			 * our child. It outlives us, and watching it would take over SIGCHLD
-			 * where pidfd isn't available.
-			 */
 			string[] argv = { path, "--background" };
 			Pid pid;
 			int stdout_fd;
