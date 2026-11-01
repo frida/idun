@@ -1,5 +1,11 @@
 daemon_sources = ['main.vala']
 daemon_kwargs = {}
+daemon_deps = [glib_dep, gobject_dep, gio_dep, efni_dep, idun_dep]
+daemon_vala_args = []
+if host_os != 'macos'
+  daemon_deps += dependency('gioopenssl')
+  daemon_vala_args += ['--pkg=gioopenssl', '--define=HAVE_GIOOPENSSL']
+endif
 if host_os_family == 'windows'
   daemon_sources += 'main-windows.c'
   daemon_kwargs += {'win_subsystem': 'windows'}
@@ -10,8 +16,9 @@ idund = executable('idund', daemon_sources,
     '--pkg=gio-2.0',
     '--pkg=json-glib-1.0',
     platform_vala_args,
+    daemon_vala_args,
   ],
-  dependencies: [glib_dep, gobject_dep, gio_dep, efni_dep, idun_dep],
+  dependencies: daemon_deps,
   install: true,
   kwargs: daemon_kwargs,
 )
