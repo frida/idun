@@ -9,6 +9,10 @@ namespace Idun.DaemonMain {
 	};
 
 	private static int main (string[] args) {
+#if HAVE_GIOOPENSSL
+		GIOOpenSSL.register ();
+#endif
+
 		try {
 			var context = new OptionContext ();
 			context.set_help_enabled (true);
