@@ -146,6 +146,8 @@ namespace Idun {
 			uint8[] invitation = session.open (tetra.serialize (), peer.signing_point.get_data (),
 				SIGNALING_TOPIC.data, bindings, verify);
 
+			capture_dump ("update-%s.bin".printf (Checksum.compute_for_data (ChecksumType.SHA1, invitation).substring (0, 12)), invitation);
+
 			string group_id;
 			try {
 				var decoded = new Plist.from_data (invitation);
@@ -334,8 +336,28 @@ namespace Idun {
 			return payload.to_binary ();
 		}
 
+		internal static void capture_dump (string name, uint8[] data) {
+			string? dir = Environment.get_variable ("IDUN_CAPTURE_DIR");
+			if (dir == null)
+				return;
+			try {
+				FileUtils.set_data (Path.build_filename (dir, name), data);
+			} catch (FileError e) {
+			}
+		}
+
 		public static uint8[] build_participant_data (string session_uuid, uint32 audio_ssrc,
 				uint64 ntp_time, uint32 call_id) throws Efni.Error {
+			return participant_data (session_uuid, audio_ssrc, ntp_time, call_id).build ();
+		}
+
+		public static uint8[] build_avc_container (string session_uuid, uint32 audio_ssrc,
+				uint64 ntp_time, uint32 call_id) throws Efni.Error {
+			return participant_data (session_uuid, audio_ssrc, ntp_time, call_id).build_avc_data ();
+		}
+
+		private static FaceTimeParticipantData participant_data (string session_uuid, uint32 audio_ssrc,
+				uint64 ntp_time, uint32 call_id) {
 			var data = new FaceTimeParticipantData ();
 			data.session_uuid = session_uuid;
 			data.audio_ssrc = audio_ssrc;
@@ -344,7 +366,7 @@ namespace Idun {
 			data.framework_version = DEVICE_BUILD;
 			data.os_version = DEVICE_HARDWARE;
 			data.call_id = call_id;
-			return data.build ();
+			return data;
 		}
 
 		private Bytes build_envelope (string caller_uri, Bytes payload) {

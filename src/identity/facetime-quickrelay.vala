@@ -12,6 +12,12 @@ namespace Idun {
 		private const int ALLOCATE_REQUEST = 200;
 		private const int REQUEST_TYPE_ALLOCATE = 3;
 		private const int RELAY_VERSION = 25;
+		private const int MEDIA_WRAP_MODE = 1;
+		private const uint8 AVCBLOB_VERSION = 1;
+		private const int AVCBLOB_KEY_LENGTH = 32;
+		private const int AVCBLOB_NONCE_LENGTH = 12;
+		private const string DATABLOB_CONTEXT = "datablob-context";
+		private const string QR_KEYING_CONTEXT = "com.apple.FaceTime.QRKeying";
 		private const string SERVICE_TOPIC = "com.apple.private.alloy.facetime.multi";
 
 		public static uint8[] build_allocation_request (string group_id, uint32 member_count,
@@ -29,6 +35,75 @@ namespace Idun {
 			request.set_integer ("qat", REQUEST_TYPE_ALLOCATE);
 			request.set_integer ("qv", RELAY_VERSION);
 			return request.to_binary ();
+		}
+
+		/**
+		 * Build the media prekey a device publishes to the relay when it binds: a freshly
+		 * minted P-256 agreement point the peers wrap their media keys to, carried in a
+		 * property list the device signs with its identity so the relay can trust it. The
+		 * signature covers the call's session alongside the prekey, binding one to the other.
+		 */
+		public static FaceTimeMaterial build_prekey_material (string session_id, Bytes signing_key,
+				uint8[] prekey_point) throws Efni.Error {
+			var payload = new Plist ();
+			payload.set_integer ("wrap-mode", MEDIA_WRAP_MODE);
+			payload.set_bytes ("public-prekey", new Bytes (prekey_point));
+			payload.set_double ("creation-date", get_real_time () / 1000000.0);
+			uint8[] payload_data = payload.to_binary ();
+
+			var signed_input = new BufferBuilder ();
+			signed_input.append_data (QR_KEYING_CONTEXT.data);
+			signed_input.append_data (session_id.data);
+			signed_input.append_data (payload_data);
+
+			var signed = new Plist ();
+			signed.set_string ("sessionID", session_id);
+			signed.set_bytes ("payload", new Bytes (payload_data));
+			signed.set_bytes ("signature", new Bytes (TetraCrypto.sign (signing_key,
+				signed_input.build ().get_data ())));
+
+			var material_id = new uint8[16];
+			OpenSSL.Rng.generate (material_id);
+			return new FaceTimeMaterial () {
+				material_type = FaceTimeMaterial.PREKEY,
+				material_id = material_id,
+				material_content = signed.to_binary ()
+			};
+		}
+
+		/**
+		 * Build the encrypted participant media blob a device publishes to the relay when
+		 * it binds: the device's AVC participant data, AES-256-GCM encrypted under a key
+		 * derived from the session key material the device mints for the call. The blob
+		 * carries the key identifier so a peer that holds the matching session key material
+		 * can locate the key and decrypt it.
+		 */
+		public static FaceTimeMaterial build_avcblob_material (string session_id, uint8[] session_key_material,
+				uint8[] session_key_salt, uint8[] session_key_id, uint8[] avc_data) throws Efni.Error {
+			var context = new BufferBuilder ();
+			context.append_data (session_id.data);
+			context.append_data (DATABLOB_CONTEXT.data);
+			uint8[] key = TetraCrypto.hkdf_extract_and_expand (OpenSSL.ShortName.sha256,
+				session_key_material, session_key_salt, context.build ().get_data (), AVCBLOB_KEY_LENGTH);
+
+			var nonce = new uint8[AVCBLOB_NONCE_LENGTH];
+			OpenSSL.Rng.generate (nonce);
+			uint8[] sealed = TetraCrypto.aes_256_gcm_seal (key, nonce, avc_data,
+				{ 1, 0, 0, 0, 0, 0, 0, 0, 0 });
+
+			var content = new BufferBuilder ();
+			content.append_data (session_key_id);
+			content.append_uint8 (AVCBLOB_VERSION);
+			content.append_data (nonce);
+			content.append_data (sealed);
+
+			var material_id = new uint8[16];
+			OpenSSL.Rng.generate (material_id);
+			return new FaceTimeMaterial () {
+				material_type = FaceTimeMaterial.AVCBLOB,
+				material_id = material_id,
+				material_content = content.build ().get_data ()
+			};
 		}
 
 		/**

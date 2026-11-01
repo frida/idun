@@ -42,6 +42,13 @@ namespace Idun {
 			message.set_request_body_from_bytes ("application/x-apple-plist", body);
 
 			Bytes response = yield send (message, cancellable);
+			string? dump = Environment.get_variable ("IDUN_LOOKUP_DUMP");
+			if (dump != null) {
+				try {
+					FileUtils.set_data (dump, response.get_data ());
+				} catch (FileError e) {
+				}
+			}
 			return parse_results (response);
 		}
 

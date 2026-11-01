@@ -11,6 +11,7 @@ namespace Idun.FaceTimeMediaTest {
 		GLib.Test.add_func ("/FaceTimeMedia/parses-allocation", parses_allocation);
 		GLib.Test.add_func ("/FaceTimeMedia/round-trips-materials", round_trips_materials);
 		GLib.Test.add_func ("/FaceTimeMedia/derives-relay-keys", derives_relay_keys);
+		GLib.Test.add_func ("/FaceTimeMedia/builds-avcblob-material", builds_avcblob_material);
 	}
 
 	private void derives_relay_keys () {
@@ -244,6 +245,41 @@ namespace Idun.FaceTimeMediaTest {
 	private const string MATERIAL = "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f";
 	private const string SEALED = "040217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794961e4ce4e740931e1b4a401e856c03fb68f91717bbecca2d9113ba22908d952ccf0891d63e4a7ae7";
 	private const string KEY_PEM = "-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgO14s9f3IhSF1XObu\n0Y9dR7YJeyveNYoK5o+MRsNzUmyhRANCAAQGqhFB+IgxMaOpVyoLWL0RIc7QFGST\nUcOSEK/G9si1xRKQ20atNEaElSLSRTAs2j9shDHEHXIiIYENleX7v0Ku\n-----END PRIVATE KEY-----\n";
+
+	private void builds_avcblob_material () {
+		try {
+			uint8[] skm = decode_hex (AVC_SKM);
+			uint8[] sks = decode_hex (AVC_SKS);
+			uint8[] ski = decode_hex (AVC_SKI);
+			uint8[] avc_data = decode_hex (MATERIAL);
+
+			var context = new BufferBuilder ();
+			context.append_data (AVC_SESSION_ID.data);
+			context.append_data ("datablob-context".data);
+			uint8[] key = TetraCrypto.hkdf_extract_and_expand (OpenSSL.ShortName.sha256, skm, sks,
+				context.build ().get_data (), 32);
+			assert_true (new Bytes (key).compare (new Bytes (decode_hex (AVC_DATABLOB_KEY))) == 0);
+
+			var material = FaceTimeQuickRelay.build_avcblob_material (AVC_SESSION_ID, skm, sks, ski, avc_data);
+			assert_true (material.material_type == FaceTimeMaterial.AVCBLOB);
+
+			uint8[] content = material.material_content;
+			assert_true (new Bytes (content[0 : 16]).compare (new Bytes (ski)) == 0);
+			assert_true (content[16] == 1);
+			uint8[] nonce = content[17 : 29];
+			uint8[] recovered = TetraCrypto.aes_256_gcm_open (key, nonce, content[29 : content.length],
+				{ 1, 0, 0, 0, 0, 0, 0, 0, 0 });
+			assert_true (new Bytes (recovered).compare (new Bytes (avc_data)) == 0);
+		} catch (Efni.Error e) {
+			assert_not_reached ();
+		}
+	}
+
+	private const string AVC_SKM = "37f078ef5902a96a37b29401c59f4366cff34628da0dabadcecc70776ee8e059";
+	private const string AVC_SKS = "f01f33c641c5cf2cf5750a1a5e4ab3a2";
+	private const string AVC_SKI = "cab3ffe510ee4c18b37c151427b96c03";
+	private const string AVC_SESSION_ID = "19859D50-DFA5-471A-A281-876E77E46EE1";
+	private const string AVC_DATABLOB_KEY = "42fbfcaad5796675a9add66569e7254800cf29564786412dd12dcd42a51b53cc";
 
 	private uint8[] decode_hex (string hex) {
 		var bytes = new uint8[hex.length / 2];

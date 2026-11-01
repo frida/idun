@@ -12,6 +12,7 @@ namespace Idun {
 		public int64 receiver_participant_id { get; set; }
 
 		public const int PREKEY = 11;
+		public const int AVCBLOB = 12;
 		public const int MEDIA_KEY = 13;
 		public const int SESSION_KEY = 14;
 	}
@@ -32,12 +33,12 @@ namespace Idun {
 		private const int MATERIALS_FIELD = 1;
 
 		private const int SERVICE_ID = 4096;
-		private const int CAPABILITIES = 9271791;
-		private const int CHANNEL_BINDING_INFO = 512;
+		private const int CAPABILITIES = 114129391;
+		private const int CHANNEL_BINDING_INFO = 528;
 		private const int MAX_CONCURRENT_STREAMS = 6;
-		private const int STATE_FLAGS = 6;
+		private const int STATE_FLAGS = 2;
 		private const int ALLOCATE_REASON = 1;
-		private const string CLIENT_OS_VERSION = "macOS,26.0,26A428";
+		private const string CLIENT_OS_VERSION = "macOS,27.0,26A428";
 		private const string CLIENT_HW_VERSION = "Mac17,2";
 
 		public static uint8[] build_allocbind (uint8[] avc_connection_id, uint8[] ids_connection_id,
@@ -59,8 +60,37 @@ namespace Idun {
 				.append_varint (14, ALLOCATE_REASON);
 			foreach (FaceTimeMaterial material in materials)
 				request.append_bytes (15, encode_material (material));
+			request.append_bytes (21, new ProtobufWriter ()
+				.append_varint (1, 1)
+				.append_varint (2, 2)
+				.data);
+			append_session_experiments (request);
 
 			return new ProtobufWriter ().append_bytes (ALLOCBIND_REQUEST, request.data).data;
+		}
+
+		private static void append_session_experiments (ProtobufWriter request) {
+			request.append_bytes (26, integer_experiment ("h2fdv2", 0));
+			request.append_bytes (26, string_experiment ("qrse_cnt", "NO"));
+			request.append_bytes (26, integer_experiment ("und2", 0));
+			request.append_bytes (26, integer_experiment ("qrse_wsep", 1));
+			request.append_bytes (26, string_experiment ("msa", "M"));
+			request.append_bytes (26, string_experiment ("qrse_pop", "sto"));
+			request.append_bytes (26, integer_experiment ("h2fd", 1));
+		}
+
+		private static uint8[] integer_experiment (string name, int value) {
+			return new ProtobufWriter ()
+				.append_varint (2, value)
+				.append_bytes (5, name.data)
+				.data;
+		}
+
+		private static uint8[] string_experiment (string name, string value) {
+			return new ProtobufWriter ()
+				.append_bytes (3, value.data)
+				.append_bytes (5, name.data)
+				.data;
 		}
 
 		public static uint8[] build_put_material (FaceTimeMaterial[] materials) {
@@ -118,12 +148,11 @@ namespace Idun {
 				.append_bytes (3, material.material_content)
 				.append_varint (4, 0);
 
-			var encoded = new ProtobufWriter ();
-			if (material.owner_participant_id != 0)
-				encoded.append_varint (1, material.owner_participant_id);
-			encoded.append_varint (2, material.receiver_participant_id);
-			encoded.append_bytes (3, info.data);
-			return encoded.data;
+			return new ProtobufWriter ()
+				.append_varint (1, material.owner_participant_id)
+				.append_varint (2, material.receiver_participant_id)
+				.append_bytes (3, info.data)
+				.data;
 		}
 
 		private static FaceTimeMaterial decode_material (uint8[] message) throws Efni.Error {

@@ -81,6 +81,13 @@ namespace Idun {
 		}
 
 		private static IdsDelegate parse_delegate (Bytes response, string username, string adsid) throws Efni.Error {
+			string? dump = Environment.get_variable ("IDUN_DELEGATE_DUMP");
+			if (dump != null) {
+				try {
+					FileUtils.set_data (dump, response.get_data ());
+				} catch (FileError e) {
+				}
+			}
 			try {
 				var plist = new Plist.from_data (response.get_data ());
 				PlistDict ids = plist.get_dict ("delegates").get_dict ("com.apple.private.ids");
@@ -90,11 +97,32 @@ namespace Idun {
 						int64.FORMAT_MODIFIER + "d", status);
 				}
 				PlistDict service_data = ids.get_dict ("service-data");
+				CloudKitCredentials cloud_kit = parse_cloud_kit (plist);
 				return new IdsDelegate (username, adsid, service_data.get_string ("profile-id"),
-					service_data.get_string ("auth-token"));
+					service_data.get_string ("auth-token"), cloud_kit);
 			} catch (PlistError e) {
 				throw new Efni.Error.PROTOCOL ("Malformed IDS delegate response: %s", e.message);
 			}
+		}
+
+		private static CloudKitCredentials parse_cloud_kit (Plist plist) throws Efni.Error, PlistError {
+			PlistDict mobileme = plist.get_dict ("delegates").get_dict ("com.apple.mobileme");
+			int64 status = mobileme.get_integer ("status");
+			if (status != 0)
+				throw new Efni.Error.PROTOCOL ("mobileme delegate login failed with status %"
+					+ int64.FORMAT_MODIFIER + "d", status);
+
+			PlistDict service_data = mobileme.get_dict ("service-data");
+			PlistDict tokens = service_data.get_dict ("tokens");
+			PlistDict ck_code = service_data.get_dict ("com.apple.Dataclass.CKCodeService");
+			PlistDict ck_device = service_data.get_dict ("com.apple.Dataclass.CKDeviceService");
+			PlistDict keychain_sync = service_data.get_dict ("com.apple.Dataclass.KeychainSync");
+			PlistDict account = service_data.get_dict ("appleAccountInfo");
+
+			return new CloudKitCredentials (tokens.get_string ("cloudKitToken"),
+				tokens.get_string ("keyTransparencyToken"), tokens.get_string ("mmeAuthToken"),
+				ck_code.get_string ("url"), ck_device.get_string ("url"),
+				keychain_sync.get_string ("escrowProxyUrl"), account.get_string ("dsPrsID"));
 		}
 
 		private async Bytes send (Soup.Message message, Cancellable? cancellable) throws Efni.Error, IOError {
@@ -134,8 +162,67 @@ namespace Idun {
 			construct;
 		}
 
-		public IdsDelegate (string username, string adsid, string profile_id, string auth_token) {
-			Object (username: username, adsid: adsid, profile_id: profile_id, auth_token: auth_token);
+		public CloudKitCredentials cloud_kit {
+			get;
+			construct;
+		}
+
+		public IdsDelegate (string username, string adsid, string profile_id, string auth_token,
+				CloudKitCredentials cloud_kit) {
+			Object (username: username, adsid: adsid, profile_id: profile_id, auth_token: auth_token,
+				cloud_kit: cloud_kit);
+		}
+	}
+
+	/**
+	 * The iCloud service endpoints and tokens the mobileme delegate hands back alongside
+	 * the identity-services authorization: the CloudKit token that authenticates requests
+	 * to Cuttlefish, the gateway those requests go to, the escrow proxy that holds the
+	 * account's bottles, and the account's numeric directory id. These are what Idun needs
+	 * to rejoin the account's Octagon trust circle.
+	 */
+	public sealed class CloudKitCredentials : Object {
+		public string cloud_kit_token {
+			get;
+			construct;
+		}
+
+		public string key_transparency_token {
+			get;
+			construct;
+		}
+
+		public string ck_code_gateway_url {
+			get;
+			construct;
+		}
+
+		public string ck_device_gateway_url {
+			get;
+			construct;
+		}
+
+		public string escrow_proxy_url {
+			get;
+			construct;
+		}
+
+		public string mme_auth_token {
+			get;
+			construct;
+		}
+
+		public string dsid {
+			get;
+			construct;
+		}
+
+		public CloudKitCredentials (string cloud_kit_token, string key_transparency_token,
+				string mme_auth_token, string ck_code_gateway_url, string ck_device_gateway_url,
+				string escrow_proxy_url, string dsid) {
+			Object (cloud_kit_token: cloud_kit_token, key_transparency_token: key_transparency_token,
+				mme_auth_token: mme_auth_token, ck_code_gateway_url: ck_code_gateway_url,
+				ck_device_gateway_url: ck_device_gateway_url, escrow_proxy_url: escrow_proxy_url, dsid: dsid);
 		}
 	}
 }

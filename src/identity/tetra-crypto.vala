@@ -43,6 +43,37 @@ namespace Idun {
 		}
 
 		/**
+		 * AES-256-GCM seal: encrypts the plaintext under a key and nonce, authenticating
+		 * the given additional data, and returns the ciphertext with its 16-byte tag
+		 * appended.
+		 */
+		public static uint8[] aes_256_gcm_seal (uint8[] key, uint8[] nonce, uint8[] plaintext,
+				uint8[] authenticated_data) throws Efni.Error {
+			var cipher = Cipher.fetch (null, "AES-256-GCM");
+			var ctx = new CipherContext ();
+			if (ctx.encrypt_init_ex (cipher) != 1)
+				throw new Efni.Error.PROTOCOL ("Unable to initialize AES-256-GCM");
+			if (ctx.ctrl (CipherCtrlType.GCM_SET_IVLEN, nonce.length, null) != 1)
+				throw new Efni.Error.PROTOCOL ("Unable to set AES-256-GCM nonce length");
+			if (ctx.encrypt_init_ex (null, null, key, nonce) != 1)
+				throw new Efni.Error.PROTOCOL ("Unable to key AES-256-GCM");
+
+			int produced = 0;
+			if (authenticated_data.length != 0)
+				ctx.encrypt_update (null, ref produced, authenticated_data);
+
+			var output = new uint8[plaintext.length + GCM_TAG_LENGTH];
+			ctx.encrypt_update (output, ref produced, plaintext);
+			int total = produced;
+			int final_len = 0;
+			ctx.encrypt_final ((uint8[]) ((uint8 *) output + total), ref final_len);
+			total += final_len;
+
+			ctx.ctrl (CipherCtrlType.GCM_GET_TAG, GCM_TAG_LENGTH, (void *) ((uint8 *) output + total));
+			return output[0 : total + GCM_TAG_LENGTH];
+		}
+
+		/**
 		 * AES-256-GCM open: the Paddy symmetric layer seals each message under a key and
 		 * 12-byte nonce derived from the message key, with the 16-byte authentication tag
 		 * trailing the ciphertext. Returns the recovered padded plaintext.

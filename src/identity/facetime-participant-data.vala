@@ -32,6 +32,36 @@ namespace Idun {
 		private const int MEDIA_CONTROL_VERSION = 1;
 		private const string USER_AGENT = "Viceroy 1.7.0/GK";
 
+		public uint8[] build_avc_data () throws Efni.Error {
+			return new ProtobufWriter ()
+				.append_bytes (4, build ())
+				.append_varint (5, 1)
+				.append_varint (6, 1)
+				.append_varint (7, 1)
+				.append_varint (8, 0)
+				.append_varint (9, 0)
+				.append_varint (10, 4)
+				.append_varint (11, 0)
+				.append_varint (12, 1)
+				.append_varint (15, 1)
+				.append_varint (16, 1)
+				.append_varint (17, 1)
+				.append_varint (18, 1)
+				.append_varint (20, 0)
+				.append_varint (21, 1)
+				.append_varint (22, 0)
+				.append_varint (23, 0)
+				.append_varint (24, 0)
+				.append_varint (25, 1)
+				.append_varint (27, 0)
+				.append_varint (28, 0)
+				.append_varint (31, 1)
+				.append_varint (32, 0)
+				.append_varint (33, 0)
+				.append_varint (34, 1)
+				.data;
+		}
+
 		public uint8[] build () throws Efni.Error {
 			var plist = new Plist ();
 			plist.set_string ("vcSessionParticipantKeyUUID", session_uuid);

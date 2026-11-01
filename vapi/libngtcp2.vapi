@@ -21,6 +21,7 @@ namespace NGTcp2 {
 		public ssize_t write_connection_close (Path * path, PacketInfo * pi, uint8[] dest, ConnectionError error, Timestamp ts);
 
 		public int open_bidi_stream (out int64 stream_id, void * stream_user_data);
+		public int open_uni_stream (out int64 stream_id, void * stream_user_data);
 		public int shutdown_stream (uint32 flags, int64 stream_id, uint64 app_error_code);
 
 		public ssize_t write_stream (Path * path, PacketInfo * pi, uint8[] dest, ssize_t * pdatalen, WriteStreamFlags flags,
@@ -35,6 +36,9 @@ namespace NGTcp2 {
 
 		public uint64 get_max_data_left ();
 		public uint64 get_max_stream_data_left (int64 stream_id);
+
+		public int extend_max_stream_offset (int64 stream_id, uint64 datalen);
+		public void extend_max_offset (uint64 datalen);
 	}
 
 	public unowned string strerror (int liberr);
@@ -186,6 +190,9 @@ namespace NGTcp2 {
 
 	[CCode (cname = "NGTCP2_STATELESS_RESET_TOKENLEN")]
 	public const size_t STATELESS_RESET_TOKENLEN;
+
+	[CCode (cname = "NGTCP2_STREAM_DATA_FLAG_FIN")]
+	public const uint32 STREAM_DATA_FLAG_FIN;
 
 	[CCode (cname = "ngtcp2_vec", has_destroy_function = false)]
 	public struct IOVector {

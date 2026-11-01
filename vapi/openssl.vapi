@@ -416,12 +416,16 @@ namespace OpenSSL {
 
 			public int ctrl (CipherCtrlType type, int arg, void * ptr);
 
+			public int set_padding (int padding);
+
 			[CCode (cname = "EVP_EncryptInit")]
 			public int encrypt_init (Cipher cipher,
 				[CCode (array_length = false)] uint8[] key,
 				[CCode (array_length = false)] uint8[] iv);
 			[CCode (cname = "EVP_EncryptUpdate")]
 			public int encrypt_update ([CCode (array_length = false)] uint8[] output, ref int outlen, uint8[] input);
+			[CCode (cname = "EVP_EncryptUpdate")]
+			public int encrypt_update_aad (void* output, ref int outlen, uint8[] input);
 			[CCode (cname = "EVP_EncryptFinal")]
 			public int encrypt_final ([CCode (array_length = false)] uint8[] output, ref int outlen);
 
@@ -440,6 +444,8 @@ namespace OpenSSL {
 				[CCode (array_length = false)] uint8[] iv);
 			[CCode (cname = "EVP_DecryptUpdate")]
 			public int decrypt_update ([CCode (array_length = false)] uint8[] output, ref int outlen, uint8[] input);
+			[CCode (cname = "EVP_DecryptUpdate")]
+			public int decrypt_update_aad (void* output, ref int outlen, uint8[] input);
 			[CCode (cname = "EVP_DecryptFinal")]
 			public int decrypt_final ([CCode (array_length = false)] uint8[] output, ref int outlen);
 		}
@@ -627,6 +633,8 @@ namespace OpenSSL {
 
 	[CCode (cheader_filename = "openssl/obj_mac.h", cname = "NID_secp384r1")]
 	public const int NID_secp384r1;
+	[CCode (cheader_filename = "openssl/obj_mac.h", cname = "NID_X9_62_prime256v1")]
+	public const int NID_X9_62_prime256v1;
 
 	[CCode (cheader_filename = "openssl/ec.h", cname = "point_conversion_form_t", has_type_id = false)]
 	public enum PointConversionForm {
@@ -657,6 +665,8 @@ namespace OpenSSL {
 		[CCode (cname = "EC_POINT_point2oct", instance_pos = 1.5)]
 		public size_t point2oct (EcGroup group, PointConversionForm form,
 			[CCode (array_length = false)] uint8[]? buf, size_t len, BigNumberContext ctx);
+		[CCode (cname = "EC_POINT_oct2point", instance_pos = 1.5)]
+		public int oct2point (EcGroup group, uint8[] buf, BigNumberContext ctx);
 	}
 
 	[Compact]
@@ -670,6 +680,8 @@ namespace OpenSSL {
 		public int set_private_key (BigNumber priv);
 		[CCode (cname = "EC_KEY_set_public_key")]
 		public int set_public_key (EcPoint pub);
+		[CCode (cname = "EC_KEY_get0_public_key")]
+		public unowned EcPoint get0_public_key ();
 	}
 
 	[Compact]
@@ -729,4 +741,10 @@ namespace OpenSSL {
 	}
 
 	public void free (void * addr);
+
+	[CCode (cheader_filename = "openssl/evp.h", cname = "PKCS5_PBKDF2_HMAC")]
+	public int pkcs5_pbkdf2_hmac ([CCode (array_length = false)] uint8[] pass, int passlen,
+		[CCode (array_length = false)] uint8[] salt, int saltlen, int iter,
+		Envelope.MessageDigest digest, int keylen,
+		[CCode (array_length = false)] uint8[] output);
 }

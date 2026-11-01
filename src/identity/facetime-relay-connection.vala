@@ -35,6 +35,13 @@ namespace Idun {
 		private NGTcp2.Crypto.Ossl.Context ossl_ctx;
 #endif
 
+		private NGHttp3.Connection? h3;
+		private int64 request_stream_id = -1;
+		private Bytes? request_body;
+		private size_t request_body_offset;
+		private ByteArray response = new ByteArray ();
+		private Promise<Bytes>? request_promise;
+
 		private Source? rx_source;
 		private int tx_count;
 		private int rx_count;
@@ -127,6 +134,21 @@ namespace Idun {
 				decrypt = NGTcp2.Crypto.decrypt_cb,
 				hp_mask = NGTcp2.Crypto.hp_mask_cb,
 				recv_retry = NGTcp2.Crypto.recv_retry_cb,
+				recv_stream_data = (conn, flags, stream_id, offset, data, user_data, stream_user_data) => {
+					FaceTimeRelayConnection * self = user_data;
+					return self->on_recv_stream_data (flags, stream_id, data);
+				},
+				acked_stream_data_offset = (conn, stream_id, offset, datalen, user_data, stream_user_data) => {
+					FaceTimeRelayConnection * self = user_data;
+					self->h3.add_ack_offset (stream_id, datalen);
+					return 0;
+				},
+				stream_close = (conn, flags, stream_id, app_error_code, user_data, stream_user_data) => {
+					FaceTimeRelayConnection * self = user_data;
+					stderr.printf ("[h3] stream_close sid=%lld flags=%u err=%llu\n", stream_id, flags, app_error_code);
+					self->h3.close_stream (stream_id, app_error_code);
+					return 0;
+				},
 				rand = on_rand,
 				get_new_connection_id = on_get_new_connection_id,
 				update_key = NGTcp2.Crypto.update_key_cb,
@@ -195,8 +217,113 @@ namespace Idun {
 		}
 
 		private int on_handshake_completed () {
+			start_h3 ();
 			if (!establish_request.future.ready)
 				establish_request.resolve (true);
+			return 0;
+		}
+
+		private void start_h3 () {
+			var callbacks = NGHttp3.Callbacks () {
+				recv_data = (conn, stream_id, data, conn_user_data, stream_user_data) => {
+					FaceTimeRelayConnection * self = conn_user_data;
+					self->response.append (data);
+					return 0;
+				},
+				end_stream = (conn, stream_id, conn_user_data, stream_user_data) => {
+					FaceTimeRelayConnection * self = conn_user_data;
+					stderr.printf ("[h3] end_stream sid=%lld resp=%u bytes\n", stream_id, self->response.len);
+					self->on_response_complete ();
+					return 0;
+				},
+			};
+			var settings = NGHttp3.Settings.make_default ();
+			NGHttp3.Connection.make_client (out h3, callbacks, settings, null, this);
+
+			int64 control_id;
+			int64 encoder_id;
+			int64 decoder_id;
+			int r1 = connection.open_uni_stream (out control_id, null);
+			int r2 = connection.open_uni_stream (out encoder_id, null);
+			int r3 = connection.open_uni_stream (out decoder_id, null);
+			int b1 = h3.bind_control_stream (control_id);
+			int b2 = h3.bind_qpack_streams (encoder_id, decoder_id);
+			stderr.printf ("[h3] start ctrl=%lld(%d) enc=%lld(%d) dec=%lld(%d) bind=%d/%d\n",
+				control_id, r1, encoder_id, r2, decoder_id, r3, b1, b2);
+		}
+
+		/**
+		 * Send one HTTP/3 request to the relay and return its response body. The relay's
+		 * QuickRelay control messages—joining the call, exchanging its media keys—are each
+		 * one of these, posted to a path under ''/QR/'' with a protobuf body.
+		 */
+		public async Bytes request (string method, string path, uint8[] body, Cancellable? cancellable = null)
+				throws Efni.Error, IOError {
+			request_body = new Bytes (body);
+			request_body_offset = 0;
+			response = new ByteArray ();
+			request_promise = new Promise<Bytes> ();
+
+			connection.open_bidi_stream (out request_stream_id, null);
+
+			string authority = "%s:%u".printf (address.get_address ().to_string (),
+				((InetSocketAddress) address).get_port ());
+			var headers = new NGHttp3.Header[] {
+				make_header (":method", method),
+				make_header (":scheme", "https"),
+				make_header (":authority", authority),
+				make_header (":path", "/QR/" + path),
+				make_header ("version", "1.1"),
+				make_header ("user-agent", "GFT/2.0"),
+				make_header ("accept", "*/*"),
+				make_header ("txn_id", Random.next_int ().to_string ()),
+				make_header ("content-length", body.length.to_string ()),
+			};
+
+			var reader = NGHttp3.DataReader () {
+				read_data = on_read_request_body,
+			};
+			int sr = h3.submit_request (request_stream_id, headers, headers.length, reader, this);
+			stderr.printf ("[h3] submit %s /QR/%s stream=%lld bodylen=%d ret=%d\n", method, path,
+				request_stream_id, body.length, sr);
+
+			process_pending_writes ();
+
+			return yield request_promise.future.wait_async (cancellable);
+		}
+
+		private static NGHttp3.Header make_header (string name, string value) {
+			return NGHttp3.Header () {
+				name = name.data,
+				value = value.data,
+				flags = NGHttp3.NV_FLAG_NONE,
+			};
+		}
+
+		private static ssize_t on_read_request_body (NGHttp3.Connection conn, int64 stream_id,
+				NGHttp3.Vector[] vec, size_t veccnt, out uint32 pflags, void * conn_user_data,
+				void * stream_user_data) {
+			FaceTimeRelayConnection * self = conn_user_data;
+			unowned uint8[] data = self->request_body.get_data ();
+			vec[0].base = data;
+			vec[0].len = data.length;
+			pflags = NGHttp3.DATA_FLAG_EOF;
+			return 1;
+		}
+
+		private void on_response_complete () {
+			if (request_promise != null && !request_promise.future.ready)
+				request_promise.resolve (new Bytes (response.data));
+		}
+
+		private int on_recv_stream_data (uint32 flags, int64 stream_id, uint8[] data) {
+			int fin = (flags & NGTcp2.STREAM_DATA_FLAG_FIN) != 0 ? 1 : 0;
+			stderr.printf ("[h3] recv_stream_data sid=%lld len=%d fin=%d\n", stream_id, data.length, fin);
+			ssize_t consumed = h3.read_stream (stream_id, data, fin);
+			if (consumed > 0) {
+				connection.extend_max_stream_offset (stream_id, consumed);
+				connection.extend_max_offset (consumed);
+			}
 			return 0;
 		}
 
@@ -269,18 +396,51 @@ namespace Idun {
 			var pi = NGTcp2.PacketInfo ();
 
 			while (true) {
-				ssize_t datalen = 0;
-				ssize_t n = connection.write_stream (null, &pi, tx_buf, &datalen, NGTcp2.WriteStreamFlags.NONE,
-					-1, null, ts);
-				if (n == 0)
-					break;
-				if (n == NGTcp2.ErrorCode.WRITE_MORE)
+				int64 stream_id = -1;
+				int fin = 0;
+				NGTcp2.IOVector[] datav = {};
+				if (h3 != null) {
+					var vecs = new NGHttp3.Vector[16];
+					ssize_t sveccnt = h3.writev_stream (out stream_id, out fin, vecs, vecs.length);
+					if (sveccnt < 0)
+						break;
+					datav = new NGTcp2.IOVector[sveccnt];
+					for (int i = 0; i != sveccnt; i++) {
+						unowned uint8[] chunk = (uint8[]) vecs[i].base;
+						chunk.length = (int) vecs[i].len;
+						datav[i].base = chunk;
+					}
+				}
+
+				var flags = NGTcp2.WriteStreamFlags.MORE;
+				if (fin != 0)
+					flags |= NGTcp2.WriteStreamFlags.FIN;
+
+				ssize_t ndatalen = 0;
+				ssize_t n = connection.writev_stream (null, &pi, tx_buf, &ndatalen, flags,
+					(datav.length != 0 || fin != 0) ? stream_id : -1, datav, ts);
+				if (h3 != null && (datav.length != 0 || fin != 0))
+					stderr.printf ("[h3] writev sid=%lld veccnt=%d fin=%d -> n=%zd ndatalen=%zd\n",
+						stream_id, datav.length, fin, n, ndatalen);
+
+				if (n == NGTcp2.ErrorCode.WRITE_MORE) {
+					if (h3 != null && ndatalen > 0)
+						h3.add_write_offset (stream_id, ndatalen);
 					continue;
+				}
+				if (n == NGTcp2.ErrorCode.STREAM_DATA_BLOCKED || n == NGTcp2.ErrorCode.STREAM_SHUT_WR) {
+					h3.block_stream (stream_id);
+					continue;
+				}
 				if (n == NGTcp2.ErrorCode.CLOSING) {
 					perform_teardown ();
 					break;
 				}
 				if (n < 0)
+					break;
+				if (h3 != null && ndatalen > 0)
+					h3.add_write_offset (stream_id, ndatalen);
+				if (n == 0)
 					break;
 
 				try {

@@ -29,6 +29,8 @@ if host_os != 'macos'
   test_sources += 'test-facetime-media.vala'
   test_sources += 'test-octagon-escrow-keys.vala'
   test_sources += 'test-octagon-bottle.vala'
+  test_sources += 'test-escrow-srp.vala'
+  test_sources += 'test-octagon-peer-keys.vala'
 endif
 
 if build_media

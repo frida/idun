@@ -25,6 +25,7 @@ namespace NGHttp3 {
 			DataReader? dr, void * stream_user_data);
 
 		public int close_stream (int64 stream_id, uint64 app_error_code);
+		public int block_stream (int64 stream_id);
 		public int set_stream_user_data (int64 stream_id, void * stream_user_data);
 	}
 
@@ -124,6 +125,8 @@ namespace NGHttp3 {
 
 	[CCode (cname = "NGHTTP3_NV_FLAG_NONE")]
 	public const uint8 NV_FLAG_NONE;
+	[CCode (cname = "NGHTTP3_DATA_FLAG_EOF")]
+	public const uint32 DATA_FLAG_EOF;
 
 	[CCode (cname = "nghttp3_err_is_fatal")]
 	public bool err_is_fatal (int liberr);

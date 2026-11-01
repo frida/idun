@@ -106,6 +106,13 @@ namespace Idun {
 			return value;
 		}
 
+		public string read_string () throws Efni.Error {
+			uint8[] bytes = read_bytes ();
+			var terminated = new uint8[bytes.length + 1];
+			Memory.copy (terminated, bytes, bytes.length);
+			return (string) terminated;
+		}
+
 		public void skip (uint8 wire_type) throws Efni.Error {
 			switch (wire_type) {
 				case 0:

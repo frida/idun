@@ -21,7 +21,12 @@ namespace Idun {
 		private const uint32 NGM_VERSION = 13;
 		private const uint32 KT_VERSION = 5;
 		private const uint32 TETRA_VERSION = 15;
-		private const string SERVICE = "com.apple.private.alloy.facetime.multi";
+		private static string SERVICE {
+			get {
+				string? s = Environment.get_variable ("IDUN_SERVICE");
+				return (s != null) ? s : "com.apple.private.alloy.facetime.multi";
+			}
+		}
 		private const string USER_AGENT = "com.apple.invitation-registration [macOS,27.0,26A428,Mac17,2]";
 		private const string PROTOCOL_VERSION = "27000000";
 
@@ -48,8 +53,16 @@ namespace Idun {
 			ValidationData validation = yield oracle.produce_validation_data (cancellable);
 			IdsBag bag = yield IdsBag.fetch (session, cancellable);
 
-			Bytes body = gzip (build_request (auth.profile_id, handle, message, ngm, validation,
-				device_data.load_or_create ()));
+			Bytes plain_body = build_request (auth.profile_id, handle, message, ngm, validation,
+				device_data.load_or_create ());
+			string? request_dump = Environment.get_variable ("IDUN_DUMP_REQUEST");
+			if (request_dump != null) {
+				try {
+					FileUtils.set_data (request_dump, plain_body.get_data ());
+				} catch (FileError e) {
+				}
+			}
+			Bytes body = gzip (plain_body);
 			uint8[] token = push_token.get_data ();
 
 			Gee.Map<string, string> absinthe = yield oracle.fetch_absinthe_headers (
@@ -164,9 +177,20 @@ namespace Idun {
 				data.set_bytes ("public-message-ngm-device-prekey-data-key",
 					new Bytes (ngm.device_prekey_data (timestamp, TETRA_VERSION)));
 				data.set_integer ("public-message-identity-ngm-version", NGM_VERSION);
+
+				string? device_key_signature = Environment.get_variable ("IDUN_DEVICE_KEY_SIGNATURE");
+				if (device_key_signature != null)
+					data.set_bytes ("device-key-signature", new Bytes (decode_hex (device_key_signature)));
 			}
 
 			return data;
+		}
+
+		private static uint8[] decode_hex (string hex) {
+			var bytes = new uint8[hex.length / 2];
+			for (int i = 0; i != bytes.length; i++)
+				bytes[i] = (uint8) hex.substring (i * 2, 2).to_long (null, 16);
+			return bytes;
 		}
 
 		private static PlistDict build_private_device_data (string device_unique_id) {
@@ -308,6 +332,15 @@ namespace Idun {
 		private async Bytes send (Soup.Message message, Cancellable? cancellable) throws Efni.Error, IOError {
 			try {
 				Bytes response = yield session.send_and_read_async (message, Priority.DEFAULT, cancellable);
+				string? dump = Environment.get_variable ("IDUN_DUMP_REGISTER");
+				if (dump != null) {
+					try {
+						FileUtils.set_data (dump, response.get_data ());
+						print ("[register] dumped %u-byte response to %s (HTTP %u)\n",
+							response.length, dump, message.status_code);
+					} catch (GLib.Error e) {
+					}
+				}
 				if (message.status_code != 200)
 					throw new Efni.Error.PROTOCOL ("IDS registration returned HTTP %u", message.status_code);
 				return response;

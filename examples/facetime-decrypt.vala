@@ -7,6 +7,109 @@ namespace Idun.Examples {
 
 		var ngm = NgmIdentity.load_or_generate (new NgmIdentityStore ());
 
+		if (args.length >= 4 && args[1] == "--dsttest") {
+			var parser = new Json.Parser ();
+			parser.load_from_file (args[2]);
+			var o = parser.get_root ().get_object ();
+			uint8[] built = TetraCrypto.build_root_transcript (
+				hexdecode (o.get_string_member ("initiatorURI")),
+				hexdecode (o.get_string_member ("responderHandleHash")),
+				hexdecode (o.get_string_member ("initiatorSigning")),
+				hexdecode (o.get_string_member ("responderURI")),
+				hexdecode (o.get_string_member ("responderPushToken")),
+				hexdecode (o.get_string_member ("responderSigning")),
+				"TetraStart-",
+				hexdecode (o.get_string_member ("responderEcdh")),
+				hexdecode (o.get_string_member ("initiatorEcdh")),
+				hexdecode (o.get_string_member ("initiatorKem")),
+				hexdecode (o.get_string_member ("responderKem")));
+			uint8[] expected; FileUtils.get_data (args[3], out expected);
+			bool ok = hexstr (built) == hexstr (expected);
+			print ("DSTTEST built=%dB expected=%dB  %s\n", built.length, expected.length,
+				ok ? "*** MATCH ***" : "MISMATCH");
+			return ok ? 0 : 1;
+		}
+
+		if (args.length >= 6 && args[1] == "--libtest") {
+			uint8[] dst; FileUtils.get_data (args[2], out dst);
+			uint8[] ecdh = hexdecode (args[3]);
+			uint8[] kem = hexdecode (args[4]);
+			uint8[] expected = hexdecode (args[5]);
+			uint8[] root, chain;
+			TetraCrypto.derive_root_and_chain (new uint8[0], ecdh, kem, dst, out root, out chain);
+			uint8[] mk = new TetraSymmetricRatchet (chain).message_key_for (0);
+			bool ok = hexstr (mk) == hexstr (expected);
+			print ("LIBTEST root=%s chain=%s\n        mk=%s\n  expected=%s  %s\n",
+				hexstr (root)[0:16], hexstr (chain)[0:16], hexstr (mk), hexstr (expected),
+				ok ? "*** MATCH ***" : "MISMATCH");
+			return ok ? 0 : 1;
+		}
+
+		if (args.length >= 5 && args[1] == "--recvtest") {
+			// Drive the full receive path offline: build the root context from the captured
+			// binding fields, establish the receiver session with Idun's real NGM private
+			// keys, and open the captured outer message. Validates establish_as_receiver + open.
+			var parser = new Json.Parser ();
+			parser.load_from_file (args[2]);
+			Json.Object o = parser.get_root ().get_object ();
+			uint8[] outer; FileUtils.get_data (args[3], out outer);
+			string expected_hex; FileUtils.get_contents (args[4], out expected_hex);
+			uint8[] expected = hexdecode (expected_hex.strip ());
+
+			var context = new TetraRootContext (
+				new Bytes (hexdecode (o.get_string_member ("initiatorURI"))),
+				new Bytes (hexdecode (o.get_string_member ("responderHandleHash"))),
+				new Bytes (hexdecode (o.get_string_member ("initiatorSigning"))),
+				new Bytes (hexdecode (o.get_string_member ("responderURI"))),
+				new Bytes (hexdecode (o.get_string_member ("responderPushToken"))),
+				new Bytes (hexdecode (o.get_string_member ("responderSigning"))),
+				new Bytes (hexdecode (o.get_string_member ("responderKem"))));
+
+			var tetra = TetraMessage.unwrap (outer);
+			uint8[] initiator_signing = hexdecode (o.get_string_member ("initiatorSigning"));
+			var session = TetraSession.establish_as_receiver (ngm.signing_key, context, ngm.prekey_key,
+				ngm.kem_secret.get_data (), tetra.ecdh_public_key.get_data (),
+				tetra.kem_encapsulation.get_data ());
+			var bindings = new TetraBinding[] {
+				new TetraBinding (new Bytes (hexdecode (o.get_string_member ("initiatorURI"))),
+					new Bytes (hexdecode (o.get_string_member ("responderHandleHash"))),
+					new Bytes (initiator_signing)),
+				new TetraBinding (new Bytes (hexdecode (o.get_string_member ("responderURI"))),
+					new Bytes (hexdecode (o.get_string_member ("responderPushToken"))),
+					new Bytes (hexdecode (o.get_string_member ("responderSigning"))))
+			};
+			try {
+				uint8[] pt = session.open (tetra.serialize (), initiator_signing,
+					"com.apple.private.alloy.facetime.multi".data, bindings);
+				bool ok = hexstr (pt) == hexstr (expected);
+				print ("RECVTEST plaintext=%s\n         expected =%s\n  %s\n",
+					hexstr (pt)[0:64], hexstr (expected)[0:64], ok ? "*** MATCH ***" : "MISMATCH");
+				return ok ? 0 : 1;
+			} catch (Efni.Error e) {
+				print ("RECVTEST open failed: %s\n", e.message);
+				return 1;
+			}
+		}
+
+		if (args.length >= 4 && args[1] == "--sigtest") {
+			uint8[] outer; FileUtils.get_data (args[2], out outer);
+			uint8[] sp = hexdecode (args[3]);
+			var tetra = TetraMessage.unwrap (outer);
+			uint8[] ct = tetra.ciphertext.get_data ();
+			uint8[] sig = tetra.signature.get_data ();
+			string[] cands = {
+				"", "com.apple.private.alloy.facetime.multi",
+				"com.apple.private.alloy.facetime.video", "com.apple.madrid",
+				"com.apple.private.ids", "TetraStart-", "pair-tetra"
+			};
+			foreach (string a in cands) {
+				uint8[] tr = TetraCrypto.build_signature_transcript (tetra.version, ct, a.data);
+				bool ok = TetraCrypto.verify_with_point (sp, tr, sig);
+				print ("SIGTEST aad=%-45s -> %s\n", "\"" + a + "\"", ok ? "*** VERIFIES ***" : "no");
+			}
+			return 0;
+		}
+
 		if (args.length >= 3 && args[1] == "--kemtest") {
 			uint8[] ek;
 			FileUtils.get_data (args[2], out ek);

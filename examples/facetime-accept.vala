@@ -1,4 +1,6 @@
 namespace Idun.Examples {
+	private static Bytes? device_signing_key;
+
 	private static int main (string[] args) {
 		if (args.length < 4) {
 			printerr ("Usage: %s <oracle-base-url> <apple-id> <handle>\n", args[0]);
@@ -49,6 +51,8 @@ namespace Idun.Examples {
 			NgmIdentity? ngm = (Environment.get_variable ("IDUN_NO_NGM") != null)
 				? null
 				: NgmIdentity.load_or_generate (new NgmIdentityStore ());
+			if (ngm != null)
+				device_signing_key = ngm.signing_key;
 			RegisteredService? registration = null;
 			try {
 				registration = yield new IdsRegistration (oracle).register (identity, push,
@@ -163,7 +167,78 @@ namespace Idun.Examples {
 				ip[0], ip[1], ip[2], ip[3],
 				relay_port != null ? relay_port.get_int64 () : -1,
 				relay_participant != null ? relay_participant.get_int64 () : -1);
+			string session_id = format_uuid (payload.lookup_value ("qids", new VariantType ("ay")).get_data_as_bytes ().get_data ());
+			connect_relay.begin (ip, (uint16) relay_port.get_int64 (),
+				payload.lookup_value ("qrst", new VariantType ("ay")).get_data_as_bytes (),
+				payload.lookup_value ("qrsk", new VariantType ("ay")).get_data_as_bytes (),
+				session_id);
 		}
+	}
+
+	private async void connect_relay (uint8[] ip, uint16 port, Bytes session_token, Bytes session_key,
+			string session_id) {
+		try {
+			var salt = new uint8[12];
+			OpenSSL.Rng.generate (salt);
+			uint8[] psk = FaceTimeQuickRelay.derive_quic_psk (session_key, salt);
+			uint8[] identity = FaceTimeQuickRelay.build_quic_psk_identity (salt, session_token);
+
+			var relay = new InetSocketAddress (new InetAddress.from_bytes (ip, SocketFamily.IPV4), port);
+
+			print ("  connecting QUIC to relay...\n");
+			var conn = yield FaceTimeRelayConnection.open (relay, new Bytes (identity), new Bytes (psk));
+			print ("  *** QuickRelay QUIC+PSK handshake OK ***\n");
+
+			var prekey = FaceTimeEndpoint.generate_media_key ();
+			var prekey_material = FaceTimeQuickRelay.build_prekey_material (session_id, device_signing_key,
+				FaceTimeEndpoint.media_public_point (prekey));
+
+			var skm = new uint8[32];
+			var sks = new uint8[16];
+			var ski = new uint8[16];
+			OpenSSL.Rng.generate (skm);
+			OpenSSL.Rng.generate (sks);
+			OpenSSL.Rng.generate (ski);
+			uint8[] avc_data = FaceTimeEndpoint.build_avc_container (format_uuid (session_participant_uuid ()),
+				Random.next_int (), ntp_time (), Random.next_int ());
+			var avcblob_material = FaceTimeQuickRelay.build_avcblob_material (session_id, skm, sks, ski, avc_data);
+
+			uint8[] body = FaceTimeRelayProtocol.build_allocbind (quic_pod_id (0), quic_pod_id (1),
+				new FaceTimeMaterial[] { prekey_material, avcblob_material });
+			Bytes resp = yield conn.request ("PUT", "AllocBind", body);
+			print ("  *** AllocBind response: %zu bytes: %s ***\n", resp.get_size (),
+				format_head (resp.get_data ()));
+		} catch (GLib.Error e) {
+			print ("  QuickRelay request failed: %s\n", e.message);
+		}
+	}
+
+	private uint8[] session_participant_uuid () {
+		var uuid = new uint8[16];
+		OpenSSL.Rng.generate (uuid);
+		return uuid;
+	}
+
+	private uint64 ntp_time () {
+		return ((uint64) (get_real_time () / 1000000 + 2208988800)) << 32;
+	}
+
+	private uint8[] quic_pod_id (uint32 type) {
+		uint32 item = (Random.next_int () & 0x0fffffff) | (type << 28) | 0x800000;
+		return { (uint8) (item >> 24), (uint8) (item >> 16), (uint8) (item >> 8), (uint8) item };
+	}
+
+	private string format_uuid (uint8[] b) {
+		return "%02X%02X%02X%02X-%02X%02X-%02X%02X-%02X%02X-%02X%02X%02X%02X%02X%02X".printf (
+			b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7],
+			b[8], b[9], b[10], b[11], b[12], b[13], b[14], b[15]);
+	}
+
+	private string format_head (uint8[] data) {
+		var sb = new StringBuilder ();
+		for (int i = 0; i != int.min (data.length, 32); i++)
+			sb.append_printf ("%02x", data[i]);
+		return sb.str;
 	}
 
 	private void dump_pair_tetra (Variant payload) {

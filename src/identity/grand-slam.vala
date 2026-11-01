@@ -15,6 +15,8 @@ namespace Idun {
 
 		private const string SERVICE_URL = "https://gsa.apple.com/grandslam/GsService2";
 		private const string PET_NAME = "com.apple.gs.idms.pet";
+		private const string ICLOUD_AUTH_NAME = "com.apple.gs.icloud.auth";
+		private const string APPLEID_AUTH_NAME = "com.apple.gs.appleid.auth";
 
 		private const string N_HEX =
 			"AC6BDB41324A9A9BF166DE5E1389582FAF72B6651987EE07FC3192943DB56050" +
@@ -109,6 +111,9 @@ namespace Idun {
 
 		private async PlistDict run_login (string username, string password,
 				Gee.Map<string, string> anisette, Cancellable? cancellable) throws Efni.Error, IOError {
+			string? user_override = Environment.get_variable ("IDUN_GSA_USER");
+			if (user_override != null)
+				username = user_override;
 			var ctx = new OpenSSL.BigNumberContext.secure ();
 			var n = bn_from (decode_hex (N_HEX));
 			var g = bn_from ({ 2 });
@@ -222,6 +227,8 @@ namespace Idun {
 
 			try {
 				var plist = new Plist.from_data (plain);
+				if (Environment.get_variable ("IDUN_DUMP_GSA_SPD") != null)
+					print ("[gsa-spd]\n%s\n", plist.to_xml ());
 				return plist;
 			} catch (PlistError e) {
 				throw new Efni.Error.PROTOCOL ("Malformed Grand Slam session data: %s", e.message);
@@ -231,9 +238,22 @@ namespace Idun {
 		private GrandSlamIdentity extract_identity (PlistDict spd) throws Efni.Error {
 			try {
 				PlistDict tokens = spd.get_dict ("t");
+				if (Environment.get_variable ("IDUN_DUMP_GSA_TOKENS") != null) {
+					foreach (string key in tokens.keys) {
+						try {
+							string tok = tokens.get_dict (key).get_string ("token");
+							print ("[gsa-token] %-40s len=%d %.24s\n", key, tok.length, tok);
+						} catch (PlistError e) {
+							print ("[gsa-token] %-40s (no token)\n", key);
+						}
+					}
+				}
 				PlistDict pet = tokens.get_dict (PET_NAME);
+				PlistDict icloud = tokens.get_dict (ICLOUD_AUTH_NAME);
+				PlistDict appleid = tokens.get_dict (APPLEID_AUTH_NAME);
 				return new GrandSlamIdentity (spd.get_string ("adsid"), spd.get_integer ("DsPrsId").to_string (),
-					pet.get_string ("token"), pet.get_integer ("expiry"));
+					pet.get_string ("token"), pet.get_integer ("expiry"), icloud.get_string ("token"),
+					appleid.get_string ("token"));
 			} catch (PlistError e) {
 				throw new Efni.Error.PROTOCOL ("Grand Slam response missing tokens: %s", e.message);
 			}
@@ -301,13 +321,39 @@ namespace Idun {
 			var message = new Soup.Message ("POST", SERVICE_URL);
 			message.set_request_body_from_bytes ("text/x-xml-plist", new Bytes (envelope.to_xml ().data));
 			var headers = message.request_headers;
-			headers.replace ("User-Agent", device["X-MMe-Client-Info"]);
 			headers.replace ("X-MMe-Client-Info", device["X-MMe-Client-Info"]);
 			headers.replace ("X-Mme-Device-Id", device["X-Mme-Device-Id"]);
-			headers.replace ("X-Apple-AK-Context-Type", "facetime");
-			headers.replace ("X-Apple-Client-App-Name", "FaceTime");
-			headers.replace ("X-Apple-I-Auth-Type", "2");
-			headers.replace ("X-Apple-I-Client-Bundle-Id", "com.apple.FaceTime");
+			string client = Environment.get_variable ("IDUN_GSA_CLIENT") ?? "facetime";
+			if (client == "appleidsettings") {
+				headers.replace ("User-Agent", "akd/1.0 CFNetwork/3896.100.1.1.1 Darwin/27.0.0");
+				headers.replace ("Accept", "*/*");
+				headers.replace ("Accept-Encoding", "gzip, deflate, br");
+				headers.replace ("Accept-Language", "en-US,en;q=0.9");
+				headers.replace ("X-Apple-Client-App-Name", "AppleIDSettings");
+				headers.replace ("X-Apple-I-Auth-Type", "2");
+				headers.replace ("X-Apple-I-Client-Bundle-Id", "com.apple.systempreferences.AppleIDSettings");
+				headers.replace ("X-Apple-I-SRL-NO", device["X-Apple-I-SRL-NO"]);
+				headers.replace ("X-Apple-I-MLB", device["X-Apple-I-MLB"]);
+			} else if (client == "accountsd") {
+				headers.replace ("User-Agent", "akd/1.0 CFNetwork/3896.100.1.1.1 Darwin/27.0.0");
+				headers.replace ("Accept", "*/*");
+				headers.replace ("Accept-Encoding", "gzip, deflate, br");
+				headers.replace ("Accept-Language", "en-US,en;q=0.9");
+				headers.replace ("X-Apple-AK-Context-Type", "icloud");
+				headers.replace ("X-Apple-Client-App-Name", "accountsd");
+				headers.replace ("X-Apple-I-Auth-Type", "1");
+				headers.replace ("X-Apple-I-Client-Bundle-Id", "com.apple.accountsd");
+				headers.replace ("X-Apple-Proxied-App-Name", "passd");
+				headers.replace ("X-Apple-I-Proxied-Bundle-Id", "com.apple.PassKitCore");
+				headers.replace ("X-Apple-I-SRL-NO", device["X-Apple-I-SRL-NO"]);
+				headers.replace ("X-Apple-I-MLB", device["X-Apple-I-MLB"]);
+			} else {
+				headers.replace ("User-Agent", device["X-MMe-Client-Info"]);
+				headers.replace ("X-Apple-AK-Context-Type", "facetime");
+				headers.replace ("X-Apple-Client-App-Name", "FaceTime");
+				headers.replace ("X-Apple-I-Auth-Type", "2");
+				headers.replace ("X-Apple-I-Client-Bundle-Id", "com.apple.FaceTime");
+			}
 			headers.replace ("X-Apple-I-MD", device["X-Apple-I-MD"]);
 			headers.replace ("X-Apple-I-MD-M", device["X-Apple-I-MD-M"]);
 			headers.replace ("X-Apple-I-MD-RINFO", device["X-Apple-I-MD-RINFO"]);
@@ -321,6 +367,12 @@ namespace Idun {
 			headers.replace ("x-apple-baa-sig-alt", device["x-apple-baa-sig-alt"]);
 			headers.replace ("x-apple-baa-time", device["x-apple-baa-time"]);
 			headers.replace ("x-apple-baa-version", device["x-apple-baa-version"]);
+
+			if (Environment.get_variable ("IDUN_DUMP_GSA_REQUEST") != null) {
+				print ("[gsa-req] POST %s\n", SERVICE_URL);
+				message.request_headers.foreach ((n, v) => print ("[gsa-req] %s: %s\n", n, v));
+				print ("[gsa-req-body]\n%s\n", envelope.to_xml ());
+			}
 
 			Bytes response = yield send_raw (message, cancellable);
 			try {
@@ -347,6 +399,7 @@ namespace Idun {
 		}
 
 		private PlistDict build_cpd (Gee.Map<string, string> device) {
+			string client = Environment.get_variable ("IDUN_GSA_CLIENT") ?? "facetime";
 			string lduid = device["X-Apple-I-LDUID"];
 			string sdid = device["X-Apple-I-SDID"];
 			string stable_id = device["X-Apple-I-Stable-ID"];
@@ -380,9 +433,11 @@ namespace Idun {
 			cpd.set_string ("dc", "9");
 			cpd.set_string ("dec", "unknown");
 			cpd.set_boolean ("fcd", true);
-			cpd.set_boolean ("generatePrk", true);
+			if (client != "appleidsettings") {
+				cpd.set_boolean ("generatePrk", true);
+				cpd.set_boolean ("icscrec", true);
+			}
 			cpd.set_boolean ("icdrsDisabled", false);
-			cpd.set_boolean ("icscrec", true);
 			cpd.set_string ("lduid", lduid);
 			cpd.set_string ("loc", "en_US@rg=nozzzz");
 			cpd.set_boolean ("pbe", false);
@@ -398,6 +453,21 @@ namespace Idun {
 			cpd.set_string ("x-apple-baa-time", device["x-apple-baa-time"]);
 			cpd.set_string ("x-apple-baa-version", device["x-apple-baa-version"]);
 			cpd.set_string ("x-apple-i-device-type", device["x-apple-i-device-type"]);
+			if (client == "appleidsettings") {
+				cpd.set_string ("capp", "AppleIDSettings");
+				cpd.set_string ("cbid", "com.apple.systempreferences.AppleIDSettings");
+				cpd.set_integer ("at", 2);
+				cpd.set_string ("svct", "icloud");
+				cpd.set_boolean ("pbe", true);
+				cpd.set_boolean ("X-Apple-I-ReAuth", true);
+				cpd.set_string ("X-Apple-I-PRK", prk);
+			} else if (client == "accountsd") {
+				cpd.set_string ("capp", "accountsd");
+				cpd.set_string ("cbid", "com.apple.accountsd");
+				cpd.set_integer ("at", 1);
+				cpd.set_string ("svct", "icloud");
+				cpd.set_boolean ("X-Apple-I-ReAuth", true);
+			}
 			return cpd;
 		}
 
@@ -492,8 +562,15 @@ namespace Idun {
 			return diff == 0;
 		}
 
+		private static string generate_prk () {
+			var raw = new uint8[16];
+			OpenSSL.Rng.generate (raw);
+			return bin_to_hex (raw);
+		}
+
 		private Soup.Session session = new Soup.Session ();
 		private AppleTrust trust = new AppleTrust ();
+		private string prk = generate_prk ();
 	}
 
 	/**
@@ -521,8 +598,20 @@ namespace Idun {
 			construct;
 		}
 
-		public GrandSlamIdentity (string adsid, string dsid, string pet, int64 pet_expiry) {
-			Object (adsid: adsid, dsid: dsid, pet: pet, pet_expiry: pet_expiry);
+		public string icloud_auth_token {
+			get;
+			construct;
+		}
+
+		public string appleid_auth_token {
+			get;
+			construct;
+		}
+
+		public GrandSlamIdentity (string adsid, string dsid, string pet, int64 pet_expiry,
+				string icloud_auth_token, string appleid_auth_token) {
+			Object (adsid: adsid, dsid: dsid, pet: pet, pet_expiry: pet_expiry,
+				icloud_auth_token: icloud_auth_token, appleid_auth_token: appleid_auth_token);
 		}
 	}
 

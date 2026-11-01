@@ -26,6 +26,8 @@ namespace Idun.Test {
 		Idun.FaceTimeTest.add_tests ();
 		Idun.OctagonEscrowKeysTest.add_tests ();
 		Idun.OctagonBottleTest.add_tests ();
+		Idun.EscrowSrpTest.add_tests ();
+		Idun.OctagonPeerKeysTest.add_tests ();
 #endif
 #if HAVE_MEDIA
 		Idun.IceAgentTest.add_tests ();
