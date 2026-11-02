@@ -18,10 +18,6 @@ namespace Idun {
 		private Gee.List<Backend> backends = new Gee.ArrayList<Backend> ();
 		private Gee.Map<string, Device> devices = new Gee.HashMap<string, Device> ();
 
-#if !MACOS
-		private PairingStore pairing_store = new PairingStore ();
-#endif
-
 		private enum State {
 			CREATED,
 			STARTING,
@@ -290,6 +286,7 @@ namespace Idun {
 				return;
 			}
 #endif
+			var pairing_store = new PairingStore ();
 			add_backend (new UsbmuxBackend (pairing_store));
 			add_backend (new PortableCoreDeviceBackend (pairing_store));
 		}
