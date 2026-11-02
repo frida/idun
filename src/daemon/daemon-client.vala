@@ -268,6 +268,11 @@ namespace Idun {
 
 				return tunnel;
 			} catch (GLib.Error e) {
+				if (e is Efni.Error.NOT_SUPPORTED) {
+					tunnel_request.resolve (null);
+					tunnel_request = null;
+					return null;
+				}
 				tunnel_request.reject (e);
 				tunnel_request = null;
 
