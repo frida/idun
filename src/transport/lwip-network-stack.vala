@@ -461,6 +461,7 @@ namespace Idun {
 
 				var buffer = new uint8[pbuf.tot_len];
 				unowned uint8[] chunk = pbuf.get_contiguous (buffer, pbuf.tot_len);
+				pcb.set_flags (ACK_NOW);
 				with_state_lock (() => {
 					rx_buf.append (chunk[:pbuf.tot_len]);
 					update_pending_io ();
