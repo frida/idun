@@ -763,7 +763,8 @@ namespace Idun {
 			}
 		}
 
-		private Gee.Map<UsbmuxDevice, UsbmuxTransport> transports = new Gee.HashMap<UsbmuxDevice, UsbmuxTransport> ();
+		private Gee.Map<uint, UsbmuxTransport> transports = new Gee.HashMap<uint, UsbmuxTransport> ();
+		private Gee.Set<UsbmuxTransport> announced_transports = new Gee.HashSet<UsbmuxTransport> ();
 
 		private UsbmuxClient? usbmux;
 
@@ -884,9 +885,12 @@ namespace Idun {
 			}
 
 			transports.clear ();
+			announced_transports.clear ();
 		}
 
 		private void on_device_attached (UsbmuxDevice device) {
+			if (transports.has_key (device.id))
+				return;
 			add_transport.begin (device);
 		}
 
@@ -900,13 +904,13 @@ namespace Idun {
 #else
 			var transport = new UsbmuxTransport (device, pairing_store);
 #endif
-			transports[device] = transport;
+			transports[device.id] = transport;
 
 			string? name = null;
 			Variant? icon = null;
 			if (device.connection_type == USB) {
 				bool got_details = false;
-				for (int i = 1; !got_details && transports.has_key (device); i++) {
+				for (int i = 1; !got_details && transports[device.id] == transport; i++) {
 					try {
 						_extract_details_for_device (device.product_id, device.udid, out name, out icon);
 						got_details = true;
@@ -934,7 +938,7 @@ namespace Idun {
 						}
 					}
 				}
-				if (!transports.has_key (device))
+				if (transports[device.id] != transport)
 					return;
 				if (!got_details) {
 					remove_transport (device);
@@ -946,13 +950,16 @@ namespace Idun {
 			transport._name = (owned) name;
 			transport._icon = (owned) icon;
 
+			announced_transports.add (transport);
 			transport_attached (transport);
 		}
 
 		private void remove_transport (UsbmuxDevice device) {
 			UsbmuxTransport transport;
-			transports.unset (device, out transport);
-			transport_detached (transport);
+			if (!transports.unset (device.id, out transport))
+				return;
+			if (announced_transports.remove (transport))
+				transport_detached (transport);
 		}
 
 		public extern static void _extract_details_for_device (int product_id, string udid, out string name,
