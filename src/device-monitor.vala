@@ -353,7 +353,7 @@ namespace Idun {
 
 			var device = devices[udid];
 			if (device == null) {
-				device = new Device ();
+				device = new Device (udid);
 				devices[udid] = device;
 			}
 
@@ -387,11 +387,12 @@ namespace Idun {
 		}
 
 		public string udid {
-			get {
-				foreach (var transport in transports)
-					return transport.udid;
-				assert_not_reached ();
-			}
+			get;
+			construct;
+		}
+
+		internal Device (string udid) {
+			Object (udid: udid);
 		}
 
 		public string name {
