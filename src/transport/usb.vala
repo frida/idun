@@ -184,6 +184,9 @@ namespace Idun {
 
 		public async size_t control_transfer (uint8 request_type, uint8 request, uint16 val, uint16 index, uint8[] buffer,
 				uint timeout, Cancellable? cancellable) throws Efni.Error, IOError {
+			if (_handle == null)
+				throw new Efni.Error.TRANSPORT ("USB device is closed");
+
 			var op = backend.allocate_usb_operation ();
 			unowned LibUSB.Transfer transfer = op.transfer;
 			var ready_closure = new TransferReadyClosure (control_transfer.callback);
@@ -223,6 +226,9 @@ namespace Idun {
 
 		public async size_t bulk_transfer (uint8 endpoint, uint8[] buffer, uint timeout, Cancellable? cancellable)
 				throws Efni.Error, IOError {
+			if (_handle == null)
+				throw new Efni.Error.TRANSPORT ("USB device is closed");
+
 			var op = backend.allocate_usb_operation ();
 			unowned LibUSB.Transfer transfer = op.transfer;
 			var ready_closure = new TransferReadyClosure (bulk_transfer.callback);
