@@ -299,7 +299,7 @@ namespace Idun {
 
 		private async void relay_stream (IOStream a, IOStream b) {
 			try {
-				yield a.splice_async (b, CLOSE_STREAM1 | CLOSE_STREAM2 | WAIT_FOR_BOTH, Priority.DEFAULT, io_cancellable);
+				yield a.splice_async (b, CLOSE_STREAM1 | CLOSE_STREAM2, Priority.DEFAULT, io_cancellable);
 			} catch (GLib.Error e) {
 			}
 		}
