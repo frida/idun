@@ -119,6 +119,9 @@ namespace Idun {
 		private State state = CREATED;
 
 		private Gee.Set<PortableCoreDeviceUsbTransport> usb_transports = new Gee.HashSet<PortableCoreDeviceUsbTransport> ();
+		private Gee.Set<PortableCoreDeviceUsbTransport> announced_usb_transports =
+			new Gee.HashSet<PortableCoreDeviceUsbTransport> ();
+		private Gee.List<PendingUsbArrival> pending_usb_arrivals = new Gee.ArrayList<PendingUsbArrival> ();
 		private Promise<bool> usb_started = new Promise<bool> ();
 		private Promise<bool> usb_stopped = new Promise<bool> ();
 		private bool _modeswitch_allowed = false;
@@ -205,6 +208,7 @@ namespace Idun {
 			foreach (var transport in usb_transports.to_array ())
 				yield transport.close (cancellable);
 			usb_transports.clear ();
+			announced_usb_transports.clear ();
 
 			try {
 				yield usb_stopped.future.wait_async (cancellable);
@@ -372,6 +376,8 @@ namespace Idun {
 		}
 
 		private async void handle_usb_device_arrival (LibUSB.Device raw_device, bool counted_for_startup, uint32 counted_id) {
+			var arrival = new PendingUsbArrival (raw_device);
+			pending_usb_arrivals.add (arrival);
 			try {
 				UsbDevice usb_device;
 				try {
@@ -408,6 +414,9 @@ namespace Idun {
 				if (io_cancellable.is_cancelled ())
 					return;
 
+				if (arrival.departed)
+					return;
+
 				if (transport == null) {
 					transport = new PortableCoreDeviceUsbTransport (this, usb_device, pairing_store);
 					usb_transports.add (transport);
@@ -423,9 +432,20 @@ namespace Idun {
 						}
 					}
 
+					if (arrival.departed || !usb_transports.contains (transport)) {
+						usb_transports.remove (transport);
+						try {
+							yield transport.close (io_cancellable);
+						} catch (IOError e) {
+						}
+						return;
+					}
+
+					announced_usb_transports.add (transport);
 					transport_attached (transport);
 				}
 			} finally {
+				pending_usb_arrivals.remove (arrival);
 				if (counted_for_startup)
 					resolve_startup_device (counted_id);
 			}
@@ -441,11 +461,20 @@ namespace Idun {
 
 		private async void handle_usb_device_departure (LibUSB.Device raw_device) {
 			var transport = usb_transports.first_match (t => t.usb_device.raw_device == raw_device && !t.modeswitch_in_progress);
-			if (transport == null)
+			if (transport == null) {
+				if (usb_transports.first_match (t => t.usb_device.raw_device == raw_device) == null) {
+					foreach (var arrival in pending_usb_arrivals) {
+						if (arrival.raw_device == raw_device)
+							arrival.departed = true;
+					}
+				}
 				return;
+			}
 
-			transport_detached (transport);
 			usb_transports.remove (transport);
+			if (!announced_usb_transports.remove (transport))
+				return;
+			transport_detached (transport);
 
 			try {
 				yield transport.close (io_cancellable);
@@ -594,6 +623,15 @@ namespace Idun {
 
 				base.dispose ();
 			}
+		}
+	}
+
+	private class PendingUsbArrival {
+		public unowned LibUSB.Device raw_device;
+		public bool departed = false;
+
+		public PendingUsbArrival (LibUSB.Device raw_device) {
+			this.raw_device = raw_device;
 		}
 	}
 
