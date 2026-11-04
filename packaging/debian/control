@@ -20,6 +20,7 @@ Build-Depends: debhelper-compat (= 13),
                libgstreamer1.0-dev,
                libgstreamer-plugins-base1.0-dev,
                qt6-declarative-dev,
+               qt6-multimedia-dev,
                libgirepository1.0-dev
 Standards-Version: 4.7.0
 Homepage: https://github.com/frida/idun
@@ -51,7 +52,7 @@ Description: GStreamer element for Apple device screen mirroring
 
 Package: qml6-module-idun-screen
 Architecture: any
-Depends: libidun-1.0-0 (= ${binary:Version}), gstreamer1.0-idun, gstreamer1.0-plugins-good, ${shlibs:Depends}, ${misc:Depends}
+Depends: libidun-1.0-0 (= ${binary:Version}), gstreamer1.0-idun, gstreamer1.0-plugins-good, qml6-module-qtmultimedia, ${shlibs:Depends}, ${misc:Depends}
 Recommends: gstreamer1.0-libav
 Description: Quickshell module for Apple device screen mirroring
  Provides the Idun.Screen QML module.

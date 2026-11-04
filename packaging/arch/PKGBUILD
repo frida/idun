@@ -7,7 +7,7 @@ arch=('x86_64' 'aarch64')
 url='https://github.com/frida/idun'
 license=('wxWindows')
 makedepends=('git' 'python' 'libgirepository' 'efni' 'glib2' 'libgee' 'json-glib' 'libsoup3' 'libnghttp2'
-             'openssl' 'libngtcp2' 'libusb' 'gstreamer' 'gst-plugins-base-libs' 'qt6-declarative')
+             'openssl' 'libngtcp2' 'libusb' 'gstreamer' 'gst-plugins-base-libs' 'qt6-declarative' 'qt6-multimedia')
 source=("$pkgbase::git+$url.git")
 sha256sums=('SKIP')
 
@@ -46,7 +46,7 @@ package_gst-plugin-idun() {
 
 package_idun-qml() {
   pkgdesc='QML module for Apple device screen mirroring'
-  depends=('idun' 'gst-plugin-idun' 'qt6-declarative' 'gst-plugins-good')
+  depends=('idun' 'gst-plugin-idun' 'qt6-declarative' 'qt6-multimedia' 'gst-plugins-good')
   optdepends=('gst-libav: H.264 decoding')
 
   install -d "$pkgdir/usr/lib"

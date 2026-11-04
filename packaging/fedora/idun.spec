@@ -37,6 +37,7 @@ BuildRequires:  libusb1-devel
 BuildRequires:  gstreamer1-devel
 BuildRequires:  gstreamer1-plugins-base-devel
 BuildRequires:  qt6-qtdeclarative-devel
+BuildRequires:  qt6-qtmultimedia-devel
 BuildRequires:  gobject-introspection-devel
 BuildRequires:  systemd-rpm-macros
 Requires:       glib-networking%{?_isa}
@@ -65,6 +66,7 @@ Summary:        QML module for Apple device screen mirroring
 Requires:       %{name}%{?_isa} = %{version}-%{release}
 Requires:       gstreamer1-plugin-idun%{?_isa} = %{version}-%{release}
 Requires:       gstreamer1-plugins-good%{?_isa}
+Requires:       qt6-qtmultimedia%{?_isa}
 Recommends:     gstreamer1-libav
 
 %description    qml
