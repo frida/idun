@@ -25,6 +25,18 @@ ndebug = get_option('b_ndebug')
 optimize_for_prod = ndebug == 'true' or (ndebug == 'if-release' and not get_option('debug'))
 
 glib_dep = dependency('glib-2.0')
+if glib_dep.type_name() == 'internal'
+  have_shared_glib = get_option('default_library') != 'static'
+else
+  glib_flavor_src = '''
+#include <glib.h>
+
+#ifdef GLIB_STATIC_COMPILATION
+# error GLib is static
+#endif
+'''
+  have_shared_glib = cc.compiles(glib_flavor_src, name: 'compiling with shared GLib', dependencies: [glib_dep])
+endif
 gobject_dep = dependency('gobject-2.0')
 gio_dep = dependency('gio-2.0')
 gee_dep = dependency('gee-0.8', default_options: [

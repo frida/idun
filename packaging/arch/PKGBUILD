@@ -28,7 +28,7 @@ build() {
 }
 
 package_idun() {
-  depends=('efni' 'glib2' 'libgee' 'json-glib' 'libsoup3' 'libnghttp2' 'openssl' 'libngtcp2' 'libusb')
+  depends=('efni' 'glib2' 'glib-networking' 'libgee' 'json-glib' 'libsoup3' 'libnghttp2' 'openssl' 'libngtcp2' 'libusb')
 
   cd "$pkgbase"
   DESTDIR="$pkgdir" make install

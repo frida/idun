@@ -39,7 +39,7 @@ Description: Library for talking to Apple devices over CoreDevice - development 
 
 Package: idund
 Architecture: any
-Depends: libidun-1.0-0 (= ${binary:Version}), ${shlibs:Depends}, ${misc:Depends}
+Depends: libidun-1.0-0 (= ${binary:Version}), glib-networking, ${shlibs:Depends}, ${misc:Depends}
 Description: Per-user daemon for talking to Apple devices over CoreDevice
  D-Bus activated daemon that owns the USB and network transports.
 

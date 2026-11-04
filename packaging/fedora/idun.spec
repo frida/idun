@@ -39,6 +39,7 @@ BuildRequires:  gstreamer1-plugins-base-devel
 BuildRequires:  qt6-qtdeclarative-devel
 BuildRequires:  gobject-introspection-devel
 BuildRequires:  systemd-rpm-macros
+Requires:       glib-networking%{?_isa}
 
 %description
 Library and daemon for talking to Apple devices over CoreDevice, with a
