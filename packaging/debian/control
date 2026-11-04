@@ -54,7 +54,7 @@ Package: qml6-module-idun-screen
 Architecture: any
 Depends: libidun-1.0-0 (= ${binary:Version}), gstreamer1.0-idun, gstreamer1.0-plugins-good, qml6-module-qtmultimedia, ${shlibs:Depends}, ${misc:Depends}
 Recommends: gstreamer1.0-libav
-Description: Quickshell module for Apple device screen mirroring
+Description: Qt QML module for Apple device screen mirroring
  Provides the Idun.Screen QML module.
 
 Package: gir1.2-idun-1.0

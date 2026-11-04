@@ -44,7 +44,7 @@ Requires:       glib-networking%{?_isa}
 
 %description
 Library and daemon for talking to Apple devices over CoreDevice, with a
-GStreamer element and a Quickshell module for screen mirroring.
+GStreamer element and a Qt QML module for screen mirroring.
 
 %package        devel
 Summary:        Development files for %{name}

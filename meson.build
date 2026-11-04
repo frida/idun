@@ -262,12 +262,12 @@ if build_gst
   gst_plugindir = get_option('libdir') / 'gstreamer-1.0'
 endif
 
-quickshell_opt = get_option('quickshell')
-qt = import('qt6', required: quickshell_opt)
-qt_qml_dep = dependency('qt6', modules: ['Core', 'Gui', 'Qml', 'Quick', 'Multimedia'], required: quickshell_opt)
-gst_video_dep = dependency('gstreamer-video-1.0', required: quickshell_opt)
-build_quickshell = build_gst and qt.found() and qt_qml_dep.found() and gst_video_dep.found()
-if build_quickshell
+qml_opt = get_option('qml')
+qt = import('qt6', required: qml_opt)
+qt_qml_dep = dependency('qt6', modules: ['Core', 'Gui', 'Qml', 'Quick', 'Multimedia'], required: qml_opt)
+gst_video_dep = dependency('gstreamer-video-1.0', required: qml_opt)
+build_qml = build_gst and qt.found() and qt_qml_dep.found() and gst_video_dep.found()
+if build_qml
   add_languages('cpp', native: false, required: true)
 endif
 
@@ -282,8 +282,8 @@ subdir('src')
 if build_gst
   subdir('gst')
 endif
-if build_quickshell
-  subdir('quickshell')
+if build_qml
+  subdir('qml')
 endif
 if build_examples
   subdir('examples')

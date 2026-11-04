@@ -22,8 +22,8 @@ option('gstreamer',
   description: 'Build the GStreamer plugin (idunscreensrc)'
 )
 
-option('quickshell',
+option('qml',
   type: 'feature',
   value: 'auto',
-  description: 'Build the Quickshell/Qt QML module'
+  description: 'Build the Qt QML module'
 )

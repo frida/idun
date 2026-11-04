@@ -70,8 +70,8 @@ hold a `DisplayStream` can inject it through the `stream` property instead.
 
 For an embeddable, toolkit-agnostic view, the GStreamer element feeds the
 renderer the UI toolkit provides: `gtk4paintablesink` for a GTK widget,
-or the in-process Quickshell/Qt module. The module (built when Qt 6 and
-the GStreamer Qt 6 sink are present) installs a QML type:
+or the in-process Qt QML module. The module (built when Qt 6 with
+Qt Multimedia is present) installs a QML type:
 
 ```qml
 import Idun.Screen
@@ -82,10 +82,10 @@ IdunScreen {
 }
 ```
 
-The item renders the device's screen through `qml6glsink` and turns
-pointer events into touches. The GStreamer element and the Quickshell
-module link the system GStreamer and Qt, so they are built against
-system libraries rather than the bundled SDK.
+The item renders the device's screen through a Qt Multimedia
+`VideoOutput` and turns pointer events into touches. The GStreamer
+element and the QML module link the system GStreamer and Qt, so they
+are built against system libraries rather than the bundled SDK.
 
 ## Building
 
@@ -105,7 +105,7 @@ $ ./configure --enable-shared --without-prebuilds=sdk && make
 ```
 
 This builds `libidun-1.0.so`, `idund`, the `idunscreensrc` GStreamer
-element and the `Idun.Screen` Quickshell module against system
+element and the `Idun.Screen` QML module against system
 dependencies, including a system-installed Efni, using Frida's
 toolchain for the Vala compiler. lwIP has no distro package, so it is
 built from its wrap and linked statically.
