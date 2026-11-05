@@ -435,13 +435,12 @@ namespace Idun {
 
 			private void on_connect () {
 				with_state_lock (() => {
+					state = OPEN;
 					tx_possible = true;
 					update_pending_io ();
 				});
 
 				schedule_on_main_context (() => {
-					state = OPEN;
-
 					if (!established.future.ready)
 						established.resolve (true);
 
