@@ -9,6 +9,10 @@ namespace Idun.DaemonMain {
 	};
 
 	private static int main (string[] args) {
+#if !WINDOWS
+		ensure_standard_fds_open ();
+#endif
+
 #if HAVE_GIOOPENSSL
 		GIOOpenSSL.register ();
 #endif
@@ -66,6 +70,16 @@ namespace Idun.DaemonMain {
 
 		return exit_code;
 	}
+
+#if !WINDOWS
+	private static void ensure_standard_fds_open () {
+		int[] fds = { Posix.STDIN_FILENO, Posix.STDOUT_FILENO, Posix.STDERR_FILENO };
+		foreach (var fd in fds) {
+			if (Posix.fcntl (fd, Posix.F_GETFD) == -1)
+				Posix.open ("/dev/null", Posix.O_RDWR);
+		}
+	}
+#endif
 
 	private static void announce_ready () {
 		stdout.printf ("ready\n");
