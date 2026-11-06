@@ -1,4 +1,6 @@
 namespace Idun {
+	public delegate void DatagramsHandler (Gee.Collection<Bytes> datagrams);
+
 	public interface VirtualNetworkStack : NetworkStack {
 		public signal void outgoing_datagrams (Gee.Collection<Bytes> datagrams);
 
@@ -12,7 +14,9 @@ namespace Idun {
 			return new LwipNetworkStack (ethernet_address, ipv6_address, mtu);
 		}
 
-		public abstract async void handle_incoming_datagrams (Gee.Collection<Bytes> datagrams) throws Efni.Error;
+		public abstract void handle_incoming_datagrams (Gee.Collection<Bytes> datagrams) throws Efni.Error;
+
+		public abstract void set_outgoing_datagrams_handler (owned DatagramsHandler? handler);
 
 		public abstract void stop ();
 	}

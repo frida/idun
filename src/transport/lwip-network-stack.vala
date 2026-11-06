@@ -44,6 +44,9 @@ namespace Idun {
 
 		private MainContext main_context;
 
+		private bool netif_added = false;
+		private DatagramsHandler? outgoing_handler;
+
 		private enum State {
 			STARTED,
 			STOPPED
@@ -68,6 +71,7 @@ namespace Idun {
 				LWIP.NetworkInterface.add_noaddr (ref handle, this, on_netif_init);
 				handle.set_link_up ();
 				handle.set_up ();
+				netif_added = true;
 				return OK;
 			});
 			state = STARTED;
@@ -117,6 +121,7 @@ namespace Idun {
 			if (state == STOPPED)
 				return;
 			perform_on_lwip_thread (() => {
+				netif_added = false;
 				handle.remove ();
 				return OK;
 			});
@@ -134,35 +139,34 @@ namespace Idun {
 			return new Ipv6UdpSocket (this);
 		}
 
-		public async void handle_incoming_datagrams (Gee.Collection<Bytes> datagrams) throws Efni.Error {
-			LWIP.ErrorCode err = OK;
-
+		public void handle_incoming_datagrams (Gee.Collection<Bytes> datagrams) throws Efni.Error {
 			check_started ();
 
 			schedule_on_lwip_thread (() => {
+				if (!netif_added)
+					return OK;
+
 				begin_output ();
 
 				foreach (var d in datagrams) {
 					var pbuf = LWIP.PacketBuffer.alloc (RAW, (uint16) d.get_size (), POOL);
 					pbuf.take (d.get_data ());
 
-					err = handle.input (pbuf, ref handle);
-					if (err == OK)
+					if (handle.input (pbuf, ref handle) == OK)
 						*((void **) &pbuf) = null;
-					else
-						break;
 				}
 
 				end_output ();
 
-				schedule_on_main_context (handle_incoming_datagrams.callback);
-
-				return err;
+				return OK;
 			});
+		}
 
-			yield;
-
-			check (err);
+		public void set_outgoing_datagrams_handler (owned DatagramsHandler? handler) {
+			perform_on_lwip_thread (() => {
+				outgoing_handler = (owned) handler;
+				return OK;
+			});
 		}
 
 		private static LWIP.ErrorCode on_netif_link_output (LWIP.NetworkInterface handle, LWIP.PacketBuffer pbuf) {
@@ -188,11 +192,7 @@ namespace Idun {
 			if (datagrams.is_empty)
 				return;
 
-			schedule_on_main_context (() => {
-				if (state == STARTED)
-					outgoing_datagrams (datagrams);
-				return Source.REMOVE;
-			});
+			dispatch_outgoing_datagrams (datagrams);
 		}
 
 		private void emit_datagram (LWIP.PacketBuffer pbuf) {
@@ -205,12 +205,20 @@ namespace Idun {
 				return;
 			}
 
+			var datagrams = new Gee.ArrayQueue<Bytes> ();
+			datagrams.offer (datagram);
+			dispatch_outgoing_datagrams (datagrams);
+		}
+
+		private void dispatch_outgoing_datagrams (Gee.Collection<Bytes> datagrams) {
+			if (outgoing_handler != null) {
+				outgoing_handler (datagrams);
+				return;
+			}
+
 			schedule_on_main_context (() => {
-				if (state == STARTED) {
-					var datagrams = new Gee.ArrayQueue<Bytes> ();
-					datagrams.offer (datagram);
+				if (state == STARTED)
 					outgoing_datagrams (datagrams);
-				}
 				return Source.REMOVE;
 			});
 		}

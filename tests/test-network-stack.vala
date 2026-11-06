@@ -26,7 +26,11 @@ namespace Idun.NetworkStackTest {
 				var replies = new Gee.ArrayList<Bytes> ();
 				replies.add (make_reply (datagram, TCP_SYN | TCP_ACK, 0));
 				replies.add (make_reply (datagram, TCP_FIN | TCP_ACK, 1));
-				netstack.handle_incoming_datagrams.begin (replies);
+				try {
+					netstack.handle_incoming_datagrams (replies);
+				} catch (Efni.Error e) {
+					assert_not_reached ();
+				}
 				wait_for_lwip_thread (netstack);
 			}
 		});

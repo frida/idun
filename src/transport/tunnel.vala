@@ -198,8 +198,12 @@ namespace Idun {
 						pending_input.offer (new Bytes.take ((owned) datagram));
 					}
 
-					if (pending_input.size != 0)
-						_tunnel_netstack.handle_incoming_datagrams.begin (pending_input);
+					if (pending_input.size != 0) {
+						try {
+							_tunnel_netstack.handle_incoming_datagrams (pending_input);
+						} catch (Efni.Error e) {
+						}
+					}
 
 					ssize_t n;
 					try {
@@ -420,7 +424,6 @@ namespace Idun {
 		private Gee.Map<int64?, Stream> streams = new Gee.HashMap<int64?, Stream> (Numeric.int64_hash, Numeric.int64_equal);
 		private Gee.Queue<Bytes> pending_input = new Gee.ArrayQueue<Bytes> ();
 		private bool input_flush_scheduled = false;
-		private bool input_flush_happening = false;
 		private Gee.Queue<Bytes> pending_output = new Gee.ArrayQueue<Bytes> ();
 
 		private DatagramBasedSource? rx_source;
@@ -903,7 +906,7 @@ namespace Idun {
 				var source = new IdleSource ();
 				source.set_callback (() => {
 					input_flush_scheduled = false;
-					flush_pending_input.begin ();
+					flush_pending_input ();
 					return Source.REMOVE;
 				});
 				source.attach (MainContext.get_thread_default ());
@@ -913,20 +916,14 @@ namespace Idun {
 			return 0;
 		}
 
-		private async void flush_pending_input () {
-			if (input_flush_happening)
-				return;
-			input_flush_happening = true;
-
+		private void flush_pending_input () {
 			var datagrams = pending_input;
 			pending_input = new Gee.ArrayQueue<Bytes> ();
 
 			try {
-				yield _tunnel_netstack.handle_incoming_datagrams (datagrams);
-			} catch (GLib.Error e) {
+				_tunnel_netstack.handle_incoming_datagrams (datagrams);
+			} catch (Efni.Error e) {
 			}
-
-			input_flush_happening = false;
 		}
 
 		private static void on_rand (uint8[] dest, NGTcp2.RNGContext rand_ctx) {
