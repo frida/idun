@@ -534,29 +534,11 @@ namespace Idun {
 			public override ssize_t read (uint8[] buffer) throws IOError {
 				ssize_t n = 0;
 
-				netstack.perform_on_lwip_thread (() => {
-					with_state_lock (() => {
-						n = ssize_t.min (buffer.length, rx_buf.len);
-						if (n == 0)
-							return;
-						Memory.copy (buffer, rx_buf.data, n);
-						rx_buf.remove_range (0, (uint) n);
-						update_pending_io ();
-					});
-					if (n == 0)
-						return OK;
-
-					if (pcb == null)
-						return OK;
-
-					size_t remainder = n;
-					while (remainder != 0) {
-						uint16 chunk = (uint16) size_t.min (remainder, uint16.MAX);
-						pcb.notify_received (chunk);
-						remainder -= chunk;
-					}
-
-					return OK;
+				with_state_lock (() => {
+					n = ssize_t.min (ssize_t.min (buffer.length, rx_buf.len), uint16.MAX);
+					Memory.copy (buffer, rx_buf.data, n);
+					rx_buf.remove_range (0, (uint) n);
+					update_pending_io ();
 				});
 
 				if (n == 0) {
@@ -564,6 +546,12 @@ namespace Idun {
 						return 0;
 					throw new IOError.WOULD_BLOCK ("Resource temporarily unavailable");
 				}
+
+				netstack.schedule_on_lwip_thread (() => {
+					if (pcb != null)
+						pcb.notify_received ((uint16) n);
+					return OK;
+				});
 
 				return n;
 			}
