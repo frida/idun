@@ -48,6 +48,8 @@ namespace Idun {
 			STOPPED
 		}
 
+		private DatagramsHandler? outgoing_handler;
+
 		public TunNetworkStack (Bytes? ethernet_address, InetAddress? ipv6_address, uint16 mtu) throws Efni.Error {
 			Object (
 				ethernet_address: ethernet_address,
@@ -108,7 +110,7 @@ namespace Idun {
 			return system.create_udp_socket ();
 		}
 
-		public async void handle_incoming_datagrams (Gee.Collection<Bytes> datagrams) throws Efni.Error {
+		public void handle_incoming_datagrams (Gee.Collection<Bytes> datagrams) throws Efni.Error {
 			foreach (var datagram in datagrams) {
 				try {
 					output.write_all (datagram.get_data (), null, io_cancellable);
@@ -116,6 +118,10 @@ namespace Idun {
 					throw new Efni.Error.TRANSPORT ("%s", e.message);
 				}
 			}
+		}
+
+		public void set_outgoing_datagrams_handler (owned DatagramsHandler? handler) {
+			outgoing_handler = (owned) handler;
 		}
 
 		private async void process_outgoing_datagrams () {
@@ -135,7 +141,10 @@ namespace Idun {
 						}
 						datagrams.add (new Bytes (buffer[:n]));
 					}
-					outgoing_datagrams (datagrams);
+					if (outgoing_handler != null)
+						outgoing_handler (datagrams);
+					else
+						outgoing_datagrams (datagrams);
 				}
 			} catch (GLib.Error e) {
 			}
