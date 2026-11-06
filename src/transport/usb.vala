@@ -26,8 +26,9 @@ namespace Idun {
 
 		private LibUSB.Device? _raw_device;
 		private LibUSB.DeviceHandle? _handle;
-		private uint num_pending_operations;
+		private int num_pending_operations;
 		private Promise<bool>? pending_operations_completed;
+		private MainContext main_context;
 
 		private enum AppleSpecificRequest {
 			GET_MODE = 0x45,
@@ -51,6 +52,10 @@ namespace Idun {
 			_raw_device = raw_device;
 		}
 
+		construct {
+			main_context = MainContext.ref_thread_default ();
+		}
+
 		public void ensure_open (Cancellable? cancellable = null) throws Efni.Error {
 			if (_handle != null)
 				return;
@@ -58,7 +63,9 @@ namespace Idun {
 		}
 
 		public async void close (Cancellable? cancellable) throws IOError {
-			if (num_pending_operations != 0) {
+			if (_handle != null && AtomicInt.get (ref num_pending_operations) != 0) {
+				backend.cancel_usb_operations (_handle);
+
 				pending_operations_completed = new Promise<bool> ();
 				try {
 					yield pending_operations_completed.future.wait_async (cancellable);
@@ -256,14 +263,23 @@ namespace Idun {
 			return transfer.actual_length;
 		}
 
-		private void on_operation_started () {
-			num_pending_operations++;
+		internal void on_operation_started () {
+			AtomicInt.inc (ref num_pending_operations);
 		}
 
-		private void on_operation_ended () {
-			num_pending_operations--;
-			if (num_pending_operations == 0 && pending_operations_completed != null)
-				pending_operations_completed.resolve (true);
+		internal void on_operation_ended () {
+			if (!AtomicInt.dec_and_test (ref num_pending_operations))
+				return;
+
+			var source = new IdleSource ();
+			source.set_callback (() => {
+				if (pending_operations_completed != null && !pending_operations_completed.future.ready &&
+						AtomicInt.get (ref num_pending_operations) == 0) {
+					pending_operations_completed.resolve (true);
+				}
+				return Source.REMOVE;
+			});
+			source.attach (main_context);
 		}
 
 		private static void on_transfer_ready (LibUSB.Transfer transfer) {
@@ -294,6 +310,7 @@ namespace Idun {
 
 	internal interface UsbDeviceBackend : Object {
 		public abstract UsbOperation allocate_usb_operation () throws Efni.Error;
+		public abstract void cancel_usb_operations (LibUSB.DeviceHandle handle);
 	}
 
 	internal interface UsbOperation : Object {
