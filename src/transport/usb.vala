@@ -26,8 +26,9 @@ namespace Idun {
 
 		private LibUSB.Device? _raw_device;
 		private LibUSB.DeviceHandle? _handle;
-		private uint num_pending_operations;
+		private int num_pending_operations;
 		private Promise<bool>? pending_operations_completed;
+		private MainContext main_context;
 
 		private enum AppleSpecificRequest {
 			GET_MODE = 0x45,
@@ -51,6 +52,10 @@ namespace Idun {
 			_raw_device = raw_device;
 		}
 
+		construct {
+			main_context = MainContext.ref_thread_default ();
+		}
+
 		public void ensure_open (Cancellable? cancellable = null) throws Efni.Error {
 			if (_handle != null)
 				return;
@@ -58,7 +63,9 @@ namespace Idun {
 		}
 
 		public async void close (Cancellable? cancellable) throws IOError {
-			if (num_pending_operations != 0) {
+			if (_handle != null && AtomicInt.get (ref num_pending_operations) != 0) {
+				backend.cancel_usb_operations (_handle);
+
 				pending_operations_completed = new Promise<bool> ();
 				try {
 					yield pending_operations_completed.future.wait_async (cancellable);
@@ -224,46 +231,23 @@ namespace Idun {
 			return n;
 		}
 
-		public async size_t bulk_transfer (uint8 endpoint, uint8[] buffer, uint timeout, Cancellable? cancellable)
-				throws Efni.Error, IOError {
-			if (_handle == null)
-				throw new Efni.Error.TRANSPORT ("USB device is closed");
+		internal void on_operation_started () {
+			AtomicInt.inc (ref num_pending_operations);
+		}
 
-			var op = backend.allocate_usb_operation ();
-			unowned LibUSB.Transfer transfer = op.transfer;
-			var ready_closure = new TransferReadyClosure (bulk_transfer.callback);
+		internal void on_operation_ended () {
+			if (!AtomicInt.dec_and_test (ref num_pending_operations))
+				return;
 
-			transfer.fill_bulk_transfer (_handle, endpoint, buffer, on_transfer_ready, ready_closure, timeout);
-
-			var cancel_source = new CancellableSource (cancellable);
-			cancel_source.set_callback (() => {
-				transfer.cancel ();
+			var source = new IdleSource ();
+			source.set_callback (() => {
+				if (pending_operations_completed != null && !pending_operations_completed.future.ready &&
+						AtomicInt.get (ref num_pending_operations) == 0) {
+					pending_operations_completed.resolve (true);
+				}
 				return Source.REMOVE;
 			});
-			cancel_source.attach (MainContext.get_thread_default ());
-
-			try {
-				Usb.check (transfer.submit (), "Failed to submit bulk transfer");
-				on_operation_started ();
-				yield;
-				on_operation_ended ();
-			} finally {
-				cancel_source.destroy ();
-			}
-
-			Usb.check_transfer (transfer.status, "Bulk transfer failed");
-
-			return transfer.actual_length;
-		}
-
-		private void on_operation_started () {
-			num_pending_operations++;
-		}
-
-		private void on_operation_ended () {
-			num_pending_operations--;
-			if (num_pending_operations == 0 && pending_operations_completed != null)
-				pending_operations_completed.resolve (true);
+			source.attach (main_context);
 		}
 
 		private static void on_transfer_ready (LibUSB.Transfer transfer) {
@@ -294,6 +278,7 @@ namespace Idun {
 
 	internal interface UsbDeviceBackend : Object {
 		public abstract UsbOperation allocate_usb_operation () throws Efni.Error;
+		public abstract void cancel_usb_operations (LibUSB.DeviceHandle handle);
 	}
 
 	internal interface UsbOperation : Object {

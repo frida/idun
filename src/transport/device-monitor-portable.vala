@@ -560,6 +560,16 @@ namespace Idun {
 			return op;
 		}
 
+		private void cancel_usb_operations (LibUSB.DeviceHandle handle) {
+			lock (state) {
+				foreach (var op in pending_usb_ops) {
+					unowned LibUSB.Transfer transfer = op.transfer;
+					if (transfer.dev_handle == handle)
+						transfer.cancel ();
+				}
+			}
+		}
+
 		private void on_usb_operation_complete (PendingUsbOperation op) {
 			lock (state)
 				pending_usb_ops.remove (op);
@@ -617,8 +627,8 @@ namespace Idun {
 
 			public override void dispose () {
 				if (_transfer != null) {
-					_transfer = null;
 					backend.on_usb_operation_complete (this);
+					_transfer = null;
 				}
 
 				base.dispose ();
@@ -794,6 +804,8 @@ namespace Idun {
 				}
 			}
 
+			if (ncm_peer != null && ncm_peer.ncm != null)
+				ncm_peer.ncm.close ();
 			ncm_peer = null;
 
 			if (device_request != null) {

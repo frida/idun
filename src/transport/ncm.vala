@@ -37,16 +37,18 @@ namespace Idun {
 		private uint16 ndp_fixed_header_size;
 
 		private VirtualNetworkStack? _netstack;
+		private Gee.List<InputLane> input_lanes = new Gee.ArrayList<InputLane> ();
+		private Gee.Set<OutputTransfer> output_transfers = new Gee.HashSet<OutputTransfer> ();
 		private Gee.Queue<Bytes> pending_output = new Gee.ArrayQueue<Bytes> ();
-		private size_t out_in_flight_count = 0;
 		private size_t out_in_flight_bytes = 0;
-		private Gee.Map<Future<uint>, uint16> out_in_flight_sizes = new Gee.HashMap<Future<uint>, uint16> ();
-		private bool out_topup_scheduled = false;
 		private uint16 next_outgoing_sequence = 1;
+		private bool closed = false;
+		private Mutex mutex = Mutex ();
 
 		private InetAddress? _remote_ipv6_address;
+		private bool remote_ipv6_address_inferred = false;
 
-		private Cancellable io_cancellable = new Cancellable ();
+		private MainContext main_context;
 
 		private const uint16 TRANSFER_HEADER_SIZE = 4 + 2 + 2 + 2 + 2;
 		private const size_t MAX_TRANSFER_MEMORY = 60 * 1518;
@@ -81,6 +83,10 @@ namespace Idun {
 
 		private UsbNcmDriver (UsbDevice device, UsbNcmConfig config) {
 			Object (device: device, config: config);
+		}
+
+		construct {
+			main_context = MainContext.ref_thread_default ();
 		}
 
 		private async bool init_async (int io_priority, Cancellable? cancellable) throws Efni.Error, IOError {
@@ -162,60 +168,102 @@ namespace Idun {
 				"Failed to set USB interface alt setting");
 
 			_netstack = VirtualNetworkStack.create (new Bytes (mac_address), null, 1500);
-			_netstack.outgoing_datagrams.connect (on_netif_outgoing_datagrams);
+			_netstack.set_outgoing_datagrams_handler (on_outgoing_datagrams);
 
-			process_incoming_datagrams.begin ();
+			try {
+				for (size_t i = 0; i != max_in_transfers; i++)
+					start_input_lane ();
+			} catch (Efni.Error e) {
+				close ();
+				throw e;
+			}
 
 			return true;
 		}
 
 		public void close () {
-			io_cancellable.cancel ();
+			_netstack.set_outgoing_datagrams_handler (null);
 			_netstack.stop ();
+
+			mutex.lock ();
+			closed = true;
+			foreach (var lane in input_lanes)
+				lane.op.transfer.cancel ();
+			foreach (var t in output_transfers)
+				t.op.transfer.cancel ();
+			mutex.unlock ();
 		}
 
-		private async void process_incoming_datagrams () {
-			var pending = new Gee.ArrayQueue<Promise<Bytes>> ();
-			while (true) {
-				for (uint i = pending.size; i != max_in_transfers; i++) {
-					var request = transfer_next_input_batch ();
-					pending.offer (request);
-				}
+		private void start_input_lane () throws Efni.Error {
+			var lane = new InputLane ();
+			lane.driver = this;
+			lane.op = device.backend.allocate_usb_operation ();
+			lane.buffer = new uint8[ntb_in_max_size];
 
-				try {
-					var datagrams = new Gee.ArrayList<Bytes> ();
-					while (true) {
-						var request = pending.peek ();
+			device.on_operation_started ();
 
-						if (request == null)
-							break;
-						if (!datagrams.is_empty && !request.future.ready)
-							break;
-
-						var frame = yield pending.poll ().future.wait_async (io_cancellable);
-						datagrams.add_all (handle_ncm_frame (frame));
-					}
-
-					yield _netstack.handle_incoming_datagrams (datagrams);
-				} catch (GLib.Error e) {
-					return;
-				}
+			mutex.lock ();
+			try {
+				submit_input_transfer (lane);
+				input_lanes.add (lane);
+			} catch (Efni.Error e) {
+				device.on_operation_ended ();
+				throw e;
+			} finally {
+				mutex.unlock ();
 			}
 		}
 
-		private Promise<Bytes> transfer_next_input_batch () {
-			var request = new Promise<Bytes> ();
-			do_transfer_input_batch.begin (request);
-			return request;
+		private void submit_input_transfer (InputLane lane) throws Efni.Error {
+			unowned LibUSB.DeviceHandle? handle = device.handle;
+			if (handle == null)
+				throw new Efni.Error.TRANSPORT ("USB device is closed");
+
+			unowned LibUSB.Transfer transfer = lane.op.transfer;
+			transfer.fill_bulk_transfer (handle, config.rx_address, lane.buffer, on_input_transfer_complete, lane, 0);
+			Usb.check (transfer.submit (), "Failed to submit bulk transfer");
 		}
 
-		private async void do_transfer_input_batch (Promise<Bytes> request) {
-			var data = new uint8[ntb_in_max_size];
+		private static void on_input_transfer_complete (LibUSB.Transfer transfer) {
+			unowned InputLane lane = (InputLane) transfer.user_data;
+			UsbNcmDriver driver = lane.driver;
+			driver.handle_input_transfer_complete (lane);
+		}
+
+		private void handle_input_transfer_complete (InputLane lane) {
+			unowned LibUSB.Transfer transfer = lane.op.transfer;
+			var status = transfer.status;
+			int length = transfer.actual_length;
+
+			Bytes? frame = null;
+			bool ended = false;
+
+			mutex.lock ();
+			if (!closed && status == COMPLETED) {
+				frame = new Bytes (lane.buffer[:length]);
+				try {
+					submit_input_transfer (lane);
+				} catch (Efni.Error e) {
+					ended = true;
+				}
+			} else {
+				ended = true;
+			}
+			if (ended)
+				input_lanes.remove (lane);
+			mutex.unlock ();
+
+			if (ended)
+				device.on_operation_ended ();
+
+			if (frame == null)
+				return;
+
 			try {
-				size_t n = yield device.bulk_transfer (config.rx_address, data, uint.MAX, io_cancellable);
-				request.resolve (new Bytes (data[:n]));
+				var datagrams = handle_ncm_frame (frame);
+				maybe_infer_remote_address (datagrams);
+				_netstack.handle_incoming_datagrams (datagrams);
 			} catch (GLib.Error e) {
-				request.reject (e);
 			}
 		}
 
@@ -255,15 +303,7 @@ namespace Idun {
 					input.read_all (datagram_buf, out bytes_read);
 					input.seek (previous_offset, SET);
 
-					var datagram = new Bytes.take ((owned) datagram_buf);
-
-					if (_remote_ipv6_address == null) {
-						_remote_ipv6_address = try_infer_remote_address_from_datagram (datagram);
-						if (_remote_ipv6_address != null)
-							notify_property ("remote-ipv6-address");
-					}
-
-					datagrams.add (datagram);
+					datagrams.add (new Bytes.take ((owned) datagram_buf));
 				}
 
 				ndp_index = next_ndp_index;
@@ -272,29 +312,44 @@ namespace Idun {
 			return datagrams;
 		}
 
-		private void on_netif_outgoing_datagrams (Gee.Collection<Bytes> datagrams) {
-			foreach (var d in datagrams)
-				pending_output.offer (d);
+		private void maybe_infer_remote_address (Gee.List<Bytes> datagrams) {
+			if (remote_ipv6_address_inferred)
+				return;
 
-			schedule_top_up ();
+			foreach (var datagram in datagrams) {
+				var address = try_infer_remote_address_from_datagram (datagram);
+				if (address == null)
+					continue;
+				remote_ipv6_address_inferred = true;
+
+				var source = new IdleSource ();
+				source.set_callback (() => {
+					_remote_ipv6_address = address;
+					notify_property ("remote-ipv6-address");
+					return Source.REMOVE;
+				});
+				source.attach (main_context);
+
+				return;
+			}
 		}
 
-		private void schedule_top_up () {
-			if (out_topup_scheduled)
-				return;
-			out_topup_scheduled = true;
-
-			var source = new IdleSource ();
-			source.set_callback (() => {
-				out_topup_scheduled = false;
+		private void on_outgoing_datagrams (Gee.Collection<Bytes> datagrams) {
+			mutex.lock ();
+			if (!closed) {
+				foreach (var d in datagrams)
+					pending_output.offer (d);
 				top_up_output_window ();
-				return Source.REMOVE;
-			});
-			source.attach (MainContext.get_thread_default ());
+			}
+			mutex.unlock ();
 		}
 
 		private void top_up_output_window () {
-			while (!pending_output.is_empty && out_in_flight_count < max_out_transfers) {
+			unowned LibUSB.DeviceHandle? handle = device.handle;
+			if (handle == null)
+				return;
+
+			while (!pending_output.is_empty && (size_t) output_transfers.size < max_out_transfers) {
 				size_t max_datagrams = size_t.min (pending_output.size, (size_t) ndp_reserved_slots);
 				var layout = TransferLayout.compute (pending_output, max_datagrams, ntb_out_max_size, ndp_fixed_header_size,
 					ndp_out_alignment, ndp_out_divisor, ndp_out_payload_remainder);
@@ -304,42 +359,60 @@ namespace Idun {
 				var batch = new Gee.ArrayList<Bytes> ();
 				for (var i = 0; i != layout.offsets.length; i++)
 					batch.add (pending_output.poll ());
-				var transfer = build_output_transfer (batch, layout, next_outgoing_sequence++);
 
-				var request = new Promise<uint> ();
-				do_transfer_output_batch.begin (transfer, request);
+				var t = new OutputTransfer ();
+				t.driver = this;
+				try {
+					t.op = device.backend.allocate_usb_operation ();
+				} catch (Efni.Error e) {
+					break;
+				}
+				t.payload = build_output_transfer (batch, layout, next_outgoing_sequence++);
 
-				out_in_flight_count++;
+				unowned LibUSB.Transfer transfer = t.op.transfer;
+				transfer.fill_bulk_transfer (handle, config.tx_address, (uint8[]) t.payload.get_data (),
+					on_output_transfer_complete, t, 0);
+				device.on_operation_started ();
+				if (transfer.submit () != SUCCESS) {
+					device.on_operation_ended ();
+					break;
+				}
+
+				output_transfers.add (t);
 				out_in_flight_bytes += layout.size;
-
-				out_in_flight_sizes.set (request.future, layout.size);
-
-				request.future.then (fut => {
-					on_output_completed (fut);
-				});
 			}
 		}
 
-		private void on_output_completed (Future<uint> fut) {
-			uint16 size;
-			out_in_flight_sizes.unset (fut, out size);
+		private static void on_output_transfer_complete (LibUSB.Transfer transfer) {
+			unowned OutputTransfer t = (OutputTransfer) transfer.user_data;
+			UsbNcmDriver driver = t.driver;
+			driver.handle_output_transfer_complete (t);
+		}
 
-			out_in_flight_count--;
+		private void handle_output_transfer_complete (OutputTransfer t) {
+			var status = t.op.transfer.status;
+			var size = t.payload.get_size ();
+
+			mutex.lock ();
+			output_transfers.remove (t);
 			out_in_flight_bytes -= size;
+			if (!closed && status == COMPLETED)
+				top_up_output_window ();
+			mutex.unlock ();
 
-			if (fut.error != null)
-				return;
-
-			top_up_output_window ();
+			device.on_operation_ended ();
 		}
 
-		private async void do_transfer_output_batch (Bytes transfer, Promise<uint> request) {
-			try {
-				var size = yield device.bulk_transfer (config.tx_address, transfer.get_data (), uint.MAX, io_cancellable);
-				request.resolve ((uint) size);
-			} catch (GLib.Error e) {
-				request.reject (e);
-			}
+		private class InputLane : Object {
+			public UsbNcmDriver driver;
+			public UsbOperation op;
+			public uint8[] buffer;
+		}
+
+		private class OutputTransfer : Object {
+			public UsbNcmDriver driver;
+			public UsbOperation op;
+			public Bytes payload;
 		}
 
 		private class TransferLayout {
