@@ -198,17 +198,8 @@ namespace Idun {
 						pending_input.offer (new Bytes.take ((owned) datagram));
 					}
 
-					if (pending_input.size != 0) {
-						try {
-							yield _tunnel_netstack.handle_incoming_datagrams (pending_input);
-						} catch (Efni.Error e) {
-						}
-
-						var source = new IdleSource ();
-						source.set_callback (process_incoming_messages.callback);
-						source.attach (MainContext.get_thread_default ());
-						yield;
-					}
+					if (pending_input.size != 0)
+						_tunnel_netstack.handle_incoming_datagrams.begin (pending_input);
 
 					ssize_t n;
 					try {
