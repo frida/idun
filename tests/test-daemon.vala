@@ -71,7 +71,13 @@ namespace Idun.DaemonTest {
 	}
 
 	private async void monitor_spawns_daemon (Harness h) {
-		string daemon_path = Environment.get_variable ("IDUN_TEST_IDUND");
+		string? daemon_path = Environment.get_variable ("IDUN_TEST_IDUND");
+		if (daemon_path == null) {
+			GLib.Test.skip ("IDUN_TEST_IDUND not set");
+			h.done ();
+			return;
+		}
+
 		try {
 			var monitor = new DeviceMonitor ();
 			monitor.set_daemon_locator (() => daemon_path);
