@@ -286,7 +286,11 @@ namespace Idun.LLDB {
 				.append_c (',')
 				.append_size (size)
 				.build ();
-			var response = yield query (request, cancellable);
+			var response = yield query_with_ordered_predicate (request, packet => {
+				if (packet.payload_bytes.get_size () == size)
+					return ResponseAction.COMPLETE;
+				return looks_like_notification (packet) ? ResponseAction.KEEP_TRYING : ResponseAction.COMPLETE;
+			}, cancellable);
 
 			var result = response.payload_bytes;
 			if (result.get_size () != size) {
@@ -295,6 +299,38 @@ namespace Idun.LLDB {
 			}
 
 			return result;
+		}
+
+		private static bool looks_like_notification (Packet packet) {
+			unowned string payload = packet.payload;
+			if (payload.length != packet.payload_bytes.get_size ())
+				return false;
+			if (payload.length < 3 || !payload[1].isxdigit () || !payload[2].isxdigit ())
+				return false;
+
+			switch (payload[0]) {
+				case NOTIFICATION_TYPE_STOP:
+					return payload.length == 3;
+				case NOTIFICATION_TYPE_STOP_WITH_PROPERTIES:
+					return payload.length == 3 || (payload.has_suffix (";") && ":" in payload);
+				case NOTIFICATION_TYPE_EXIT_STATUS:
+				case NOTIFICATION_TYPE_EXIT_SIGNAL:
+					return payload.length == 3 || payload[3] == ';';
+				case NOTIFICATION_TYPE_OUTPUT:
+					return is_hex_string (payload.substring (1));
+				default:
+					return false;
+			}
+		}
+
+		private static bool is_hex_string (string s) {
+			if (s.length % 2 != 0)
+				return false;
+			for (int i = 0; i != s.length; i++) {
+				if (!s[i].isxdigit ())
+					return false;
+			}
+			return true;
 		}
 
 		public async uint64 allocate (size_t size, string protection, Cancellable? cancellable = null) throws Efni.Error, IOError {
