@@ -161,7 +161,7 @@ namespace Idun {
 									.add_uint64_value (0x100000000000006)
 								.end_dictionary ()
 								.set_member_name ("UUID")
-								.add_uuid_value (make_random_v4_uuid ())
+								.add_uuid_value (make_host_uuid ())
 							.end_dictionary ()
 							.build (),
 						io_cancellable);

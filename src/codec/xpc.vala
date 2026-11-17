@@ -573,21 +573,7 @@ namespace Idun {
 	}
 
 	private string make_host_identifier () {
-		var checksum = new Checksum (MD5);
-
-		const uint8 uuid_version = 3;
-		const uint8 dns_namespace[] = { 0x6b, 0xa7, 0xb8, 0x10, 0x9d, 0xad, 0x11, 0xd1, 0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8 };
-		checksum.update (dns_namespace, dns_namespace.length);
-
-		unowned uint8[] host_name = Environment.get_host_name ().data;
-		checksum.update (host_name, host_name.length);
-
-		uint8 uuid[16];
-		size_t len = uuid.length;
-		checksum.get_digest (uuid, ref len);
-
-		uuid[6] = (uuid_version << 4) | (uuid[6] & 0xf);
-		uuid[8] = 0x80 | (uuid[8] & 0x3f);
+		uint8[] uuid = make_host_uuid ();
 
 		var result = new StringBuilder.sized (36);
 		for (var i = 0; i != uuid.length; i++) {
@@ -605,17 +591,23 @@ namespace Idun {
 		return result.str;
 	}
 
-	private uint8[] make_random_v4_uuid () {
-		var hex = Uuid.string_random ().replace ("-", "");
-		var uuid = new uint8[16];
-		for (int i = 0; i != uuid.length; i++)
-			uuid[i] = (hex_nibble (hex[i * 2]) << 4) | hex_nibble (hex[i * 2 + 1]);
-		return uuid;
-	}
+	private uint8[] make_host_uuid () {
+		var checksum = new Checksum (MD5);
 
-	private uint8 hex_nibble (char c) {
-		if (c >= '0' && c <= '9')
-			return (uint8) (c - '0');
-		return (uint8) (c - 'a' + 10);
+		const uint8 uuid_version = 3;
+		const uint8 dns_namespace[] = { 0x6b, 0xa7, 0xb8, 0x10, 0x9d, 0xad, 0x11, 0xd1, 0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8 };
+		checksum.update (dns_namespace, dns_namespace.length);
+
+		unowned uint8[] host_name = Environment.get_host_name ().data;
+		checksum.update (host_name, host_name.length);
+
+		var uuid = new uint8[16];
+		size_t len = uuid.length;
+		checksum.get_digest (uuid, ref len);
+
+		uuid[6] = (uuid_version << 4) | (uuid[6] & 0xf);
+		uuid[8] = 0x80 | (uuid[8] & 0x3f);
+
+		return uuid;
 	}
 }
