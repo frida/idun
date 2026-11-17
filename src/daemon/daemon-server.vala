@@ -285,6 +285,12 @@ namespace Idun {
 			return tunnel;
 		}
 
+		private async ServiceDirectory refresh_directory (string udid, Cancellable? cancellable) throws Efni.Error, IOError {
+			var tunnel = yield open_tunnel (udid, cancellable);
+			yield tunnel.refresh_discovery (cancellable);
+			return tunnel.directory;
+		}
+
 		private async Socket open_tcp_connection (string udid, uint16 port, Cancellable? cancellable) throws Efni.Error, IOError {
 			var tunnel = yield open_tunnel (udid, cancellable);
 			var stream = yield tunnel.open_tcp_connection (port, cancellable);
@@ -421,6 +427,11 @@ namespace Idun {
 					throws GLib.Error {
 				server.track_bus_client (sender);
 				return Daemon.describe_tunnel (yield server.open_tunnel (udid, cancellable));
+			}
+
+			public async Variant refresh_directory (string udid, Cancellable? cancellable, BusName? sender) throws GLib.Error {
+				server.track_bus_client (sender);
+				return Daemon.serialize_directory (yield server.refresh_directory (udid, cancellable));
 			}
 
 #if WINDOWS

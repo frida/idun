@@ -191,7 +191,7 @@ namespace Idun.Examples {
 			var tunnel = yield device.find_tunnel (cancellable);
 			if (tunnel == null)
 				throw new Efni.Error.NOT_SUPPORTED ("No tunnel");
-			foreach (ServiceInfo service in tunnel.discovery.query_services ()) {
+			foreach (ServiceInfo service in tunnel.directory.query_services ()) {
 				print ("%s (port %u)\n", service.name, service.port);
 				foreach (string feature in service.features)
 					print ("\t%s\n", feature);

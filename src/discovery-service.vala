@@ -7,10 +7,16 @@ namespace Idun {
 			construct;
 		}
 
+		public ServiceDirectory directory {
+			get {
+				return _directory;
+			}
+		}
+
 		private XpcConnection connection;
 
 		private Promise<Variant> handshake_promise = new Promise<Variant> ();
-		private Variant handshake_body;
+		private ServiceDirectory _directory;
 
 		private Cancellable io_cancellable = new Cancellable ();
 
@@ -36,14 +42,78 @@ namespace Idun {
 			connection.message.connect (on_message);
 			connection.activate ();
 
-			handshake_body = yield handshake_promise.future.wait_async (cancellable);
+			_directory = new ServiceDirectory (yield handshake_promise.future.wait_async (cancellable));
 
 			return true;
 		}
 
-		public void close () {
+		public async void close (Cancellable? cancellable) throws IOError {
 			io_cancellable.cancel ();
 			connection.cancel ();
+
+			try {
+				yield stream.close_async (Priority.DEFAULT, cancellable);
+			} catch (GLib.Error e) {
+				if (e is IOError.CANCELLED)
+					throw (IOError) e;
+			}
+		}
+
+		private void on_close (Efni.Error? error) {
+			if (!handshake_promise.future.ready) {
+				handshake_promise.reject (
+					(error != null)
+						? error
+						: new Efni.Error.TRANSPORT ("XpcConnection closed while waiting for Handshake message"));
+			}
+		}
+
+		private void on_message (XpcMessage msg) {
+			if (msg.body == null)
+				return;
+
+			var reader = new VariantReader (msg.body);
+			try {
+				reader.read_member ("MessageType");
+				unowned string message_type = reader.get_string_value ();
+
+				if (message_type == "Handshake") {
+					handshake_promise.resolve (msg.body);
+
+					connection.post.begin (
+						new XpcBodyBuilder ()
+							.begin_dictionary ()
+								.set_member_name ("MessageType")
+								.add_string_value ("Handshake")
+								.set_member_name ("MessagingProtocolVersion")
+								.add_uint64_value (5)
+								.set_member_name ("Services")
+								.begin_dictionary ()
+								.end_dictionary ()
+								.set_member_name ("Properties")
+								.begin_dictionary ()
+									.set_member_name ("RemoteXPCVersionFlags")
+									.add_uint64_value (0x100000000000006)
+								.end_dictionary ()
+								.set_member_name ("UUID")
+								.add_uuid_value (make_host_uuid ())
+							.end_dictionary ()
+							.build (),
+						io_cancellable);
+				}
+			} catch (Efni.Error e) {
+			}
+		}
+	}
+
+	public sealed class ServiceDirectory : Object {
+		public Variant handshake_body {
+			get;
+			construct;
+		}
+
+		public ServiceDirectory (Variant handshake_body) {
+			Object (handshake_body: handshake_body);
 		}
 
 		public string query_udid () throws Efni.Error {
@@ -122,52 +192,6 @@ namespace Idun {
 				port = port,
 				features = features,
 			};
-		}
-
-		private void on_close (Efni.Error? error) {
-			if (!handshake_promise.future.ready) {
-				handshake_promise.reject (
-					(error != null)
-						? error
-						: new Efni.Error.TRANSPORT ("XpcConnection closed while waiting for Handshake message"));
-			}
-		}
-
-		private void on_message (XpcMessage msg) {
-			if (msg.body == null)
-				return;
-
-			var reader = new VariantReader (msg.body);
-			try {
-				reader.read_member ("MessageType");
-				unowned string message_type = reader.get_string_value ();
-
-				if (message_type == "Handshake") {
-					handshake_promise.resolve (msg.body);
-
-					connection.post.begin (
-						new XpcBodyBuilder ()
-							.begin_dictionary ()
-								.set_member_name ("MessageType")
-								.add_string_value ("Handshake")
-								.set_member_name ("MessagingProtocolVersion")
-								.add_uint64_value (5)
-								.set_member_name ("Services")
-								.begin_dictionary ()
-								.end_dictionary ()
-								.set_member_name ("Properties")
-								.begin_dictionary ()
-									.set_member_name ("RemoteXPCVersionFlags")
-									.add_uint64_value (0x100000000000006)
-								.end_dictionary ()
-								.set_member_name ("UUID")
-								.add_uuid_value (make_host_uuid ())
-							.end_dictionary ()
-							.build (),
-						io_cancellable);
-				}
-			} catch (Efni.Error e) {
-			}
 		}
 	}
 

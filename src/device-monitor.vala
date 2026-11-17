@@ -700,7 +700,7 @@ namespace Idun {
 	}
 
 	public interface Tunnel : Object {
-		public abstract DiscoveryService discovery {
+		public abstract ServiceDirectory directory {
 			get;
 		}
 
@@ -726,13 +726,13 @@ namespace Idun {
 		public abstract InetSocketAddress make_remote_address (uint16 port);
 
 		public async ServiceInfo resolve_service (string[] identifiers, Cancellable? cancellable) throws Efni.Error, IOError {
-			ServiceInfo? service = discovery.find_first_service (identifiers);
+			ServiceInfo? service = directory.find_first_service (identifiers);
 			if (service != null)
 				return service;
 
 			yield refresh_discovery (cancellable);
 
-			service = discovery.find_first_service (identifiers);
+			service = directory.find_first_service (identifiers);
 			if (service == null)
 				throw new Efni.Error.NOT_SUPPORTED ("Service '%s' not found", identifiers[0]);
 			return service;

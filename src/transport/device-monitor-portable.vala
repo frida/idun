@@ -14,9 +14,9 @@ namespace Idun {
 			construct;
 		}
 
-		public DiscoveryService discovery {
+		public ServiceDirectory directory {
 			get {
-				return _discovery_service;
+				return _discovery_service.directory;
 			}
 		}
 
@@ -67,7 +67,7 @@ namespace Idun {
 		}
 
 		public async void close (Cancellable? cancellable) throws IOError {
-			_discovery_service.close ();
+			yield _discovery_service.close (cancellable);
 
 			yield tunnel_connection.close (cancellable);
 
@@ -88,9 +88,8 @@ namespace Idun {
 		}
 
 		public async void refresh_discovery (Cancellable? cancellable) throws Efni.Error, IOError {
-			var disco = yield open_discovery_service (tunnel_connection, cancellable);
-			_discovery_service.close ();
-			_discovery_service = disco;
+			yield _discovery_service.close (cancellable);
+			_discovery_service = yield open_discovery_service (tunnel_connection, cancellable);
 		}
 
 		private void on_tunnel_connection_close () {
@@ -1172,9 +1171,9 @@ namespace Idun {
 			construct;
 		}
 
-		public DiscoveryService discovery {
+		public ServiceDirectory directory {
 			get {
-				return _discovery_service;
+				return _discovery_service.directory;
 			}
 		}
 
@@ -1227,7 +1226,8 @@ namespace Idun {
 			var bootstrap_stream = yield netstack.open_tcp_connection (bootstrap_rsd_endpoint, cancellable);
 			var bootstrap_disco = yield DiscoveryService.open (bootstrap_stream, cancellable);
 
-			var tunnel_service = bootstrap_disco.get_service ("com.apple.internal.dt.coredevice.untrusted.tunnelservice");
+			var tunnel_service = bootstrap_disco.directory.get_service (
+				"com.apple.internal.dt.coredevice.untrusted.tunnelservice");
 			var tunnel_endpoint = (InetSocketAddress) Object.new (typeof (InetSocketAddress),
 				address: ncm_peer.ip,
 				port: tunnel_service.port,
@@ -1248,7 +1248,7 @@ namespace Idun {
 		}
 
 		public async void close (Cancellable? cancellable) throws IOError {
-			_discovery_service.close ();
+			yield _discovery_service.close (cancellable);
 
 			yield tunnel_connection.close (cancellable);
 
@@ -1269,9 +1269,8 @@ namespace Idun {
 		}
 
 		public async void refresh_discovery (Cancellable? cancellable) throws Efni.Error, IOError {
-			var disco = yield open_discovery_service (tunnel_connection, cancellable);
-			_discovery_service.close ();
-			_discovery_service = disco;
+			yield _discovery_service.close (cancellable);
+			_discovery_service = yield open_discovery_service (tunnel_connection, cancellable);
 		}
 
 		private void on_tunnel_connection_close () {
@@ -1398,9 +1397,9 @@ namespace Idun {
 			construct;
 		}
 
-		public DiscoveryService discovery {
+		public ServiceDirectory directory {
 			get {
-				return _discovery_service;
+				return _discovery_service.directory;
 			}
 		}
 
@@ -1463,7 +1462,7 @@ namespace Idun {
 		}
 
 		public async void close (Cancellable? cancellable) throws IOError {
-			_discovery_service.close ();
+			yield _discovery_service.close (cancellable);
 
 			yield tunnel_connection.close (cancellable);
 		}
@@ -1481,9 +1480,8 @@ namespace Idun {
 		}
 
 		public async void refresh_discovery (Cancellable? cancellable) throws Efni.Error, IOError {
-			var disco = yield open_discovery_service (tunnel_connection, cancellable);
-			_discovery_service.close ();
-			_discovery_service = disco;
+			yield _discovery_service.close (cancellable);
+			_discovery_service = yield open_discovery_service (tunnel_connection, cancellable);
 		}
 	}
 

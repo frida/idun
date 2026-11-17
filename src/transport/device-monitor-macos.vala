@@ -268,9 +268,9 @@ namespace Idun {
 	}
 
 	public sealed class MacOSTunnel : Object, Tunnel {
-		public DiscoveryService discovery {
+		public ServiceDirectory directory {
 			get {
-				return _discovery;
+				return _discovery.directory;
 			}
 		}
 
@@ -404,7 +404,7 @@ namespace Idun {
 
 		public async void refresh_discovery (Cancellable? cancellable) throws Efni.Error, IOError {
 			var disco = yield locate_discovery_service (tunnel_device_address, cancellable);
-			_discovery.close ();
+			yield _discovery.close (cancellable);
 			_discovery = disco;
 			_rsd_port = query_remote_port (disco.stream);
 		}

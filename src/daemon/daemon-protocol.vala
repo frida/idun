@@ -18,6 +18,8 @@ namespace Idun {
 			throws GLib.Error;
 		public abstract async HashTable<string, Variant> open_tunnel (string udid, Cancellable? cancellable, BusName? sender)
 			throws GLib.Error;
+		public abstract async Variant refresh_directory (string udid, Cancellable? cancellable, BusName? sender)
+			throws GLib.Error;
 #if WINDOWS
 		public abstract async uint8[] open_tcp_connection (string udid, uint16 port, uint client_pid, Cancellable? cancellable,
 			BusName? sender) throws GLib.Error;
@@ -33,7 +35,7 @@ namespace Idun {
 	}
 
 	namespace Daemon {
-		public const uint PROTOCOL_VERSION = 1;
+		public const uint PROTOCOL_VERSION = 2;
 		public const string BUS_NAME = "org.freedesktop.Idun1";
 		public const string OBJECT_PATH = "/org/freedesktop/Idun1";
 
@@ -105,6 +107,7 @@ namespace Idun {
 			description["remote-address"] = tunnel.make_remote_address (0).get_address ().to_string ();
 			description["rsd-port"] = tunnel.rsd_port;
 			description["opened-at"] = tunnel.opened_at;
+			description["directory"] = serialize_directory (tunnel.directory);
 			Bytes? key = tunnel.remote_unlock_host_key;
 			if (key != null)
 				description["remote-unlock-host-key"] = new Variant.from_bytes (VariantType.BYTESTRING, key, true);
@@ -115,6 +118,14 @@ namespace Idun {
 			description["transport"] = (netstack is LwipNetworkStack) ? "relay" : "direct";
 
 			return description;
+		}
+
+		public Variant serialize_directory (ServiceDirectory directory) {
+			return new Variant.from_bytes (VariantType.BYTESTRING, directory.handshake_body.get_data_as_bytes (), true);
+		}
+
+		public ServiceDirectory deserialize_directory (Variant serialized) {
+			return new ServiceDirectory (new Variant.from_bytes (VariantType.VARDICT, serialized.get_data_as_bytes (), false));
 		}
 
 #if WINDOWS

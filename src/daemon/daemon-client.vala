@@ -292,9 +292,9 @@ namespace Idun {
 			construct;
 		}
 
-		public DiscoveryService discovery {
+		public ServiceDirectory directory {
 			get {
-				return _discovery;
+				return _directory;
 			}
 		}
 
@@ -327,7 +327,7 @@ namespace Idun {
 		private int64 _opened_at;
 		private Bytes? _remote_unlock_host_key;
 		private NetworkStack? _netstack;
-		private DiscoveryService? _discovery;
+		private ServiceDirectory? _directory;
 
 		public DaemonTunnel (string udid, DaemonService service) {
 			Object (udid: udid, service: service);
@@ -355,11 +355,10 @@ namespace Idun {
 			else
 				_netstack = new DaemonRelayNetworkStack (udid, service, local_address, scope_id, remote_address);
 
-			_discovery = yield open_discovery_service (cancellable);
+			_directory = Daemon.deserialize_directory (description["directory"]);
 		}
 
 		public async void close (Cancellable? cancellable) throws IOError {
-			_discovery.close ();
 		}
 
 		public async IOStream open_tcp_connection (uint16 port, Cancellable? cancellable) throws Efni.Error, IOError {
@@ -384,13 +383,11 @@ namespace Idun {
 		}
 
 		public async void refresh_discovery (Cancellable? cancellable) throws Efni.Error, IOError {
-			var disco = yield open_discovery_service (cancellable);
-			_discovery.close ();
-			_discovery = disco;
-		}
-
-		private async DiscoveryService open_discovery_service (Cancellable? cancellable) throws Efni.Error, IOError {
-			return yield DiscoveryService.open (yield open_tcp_connection (rsd_port, cancellable), cancellable);
+			try {
+				_directory = Daemon.deserialize_directory (yield service.refresh_directory (udid, cancellable, null));
+			} catch (GLib.Error e) {
+				Daemon.throw_remote_error (e);
+			}
 		}
 	}
 
