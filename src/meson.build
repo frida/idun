@@ -80,7 +80,7 @@ if build_daemon
   if host_os_family == 'windows'
     idun_sources += 'daemon' / 'daemon-glue-windows.c'
   else
-    idun_sources += 'daemon' / 'daemon-glue-linux.c'
+    idun_sources += 'daemon' / 'daemon-glue-unix.c'
   endif
 endif
 

@@ -232,7 +232,7 @@ header_install_dir = get_option('includedir') / f'idun-@api_version@'
 
 daemon_opt = get_option('daemon')
 if daemon_opt.auto()
-  build_daemon = host_os_family == 'windows' or host_os_family == 'linux'
+  build_daemon = host_os_family == 'windows' or host_os == 'macos' or host_os_family == 'linux'
 else
   build_daemon = not daemon_opt.disabled()
 endif

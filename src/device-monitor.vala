@@ -27,12 +27,7 @@ namespace Idun {
 
 		private delegate void NotifyCompleteFunc ();
 
-#if MACOS
-		construct {
-			add_backend (new UsbmuxBackend ());
-			add_backend (new MacOSCoreDeviceBackend ());
-		}
-#elif HAVE_DAEMON
+#if HAVE_DAEMON
 		internal DeviceMonitor.for_daemon () {
 			use_daemon = false;
 		}
@@ -66,11 +61,9 @@ namespace Idun {
 		}
 
 		private async void perform_start (Cancellable? cancellable) throws Efni.Error, IOError {
-#if !MACOS
-			yield add_portable_backends (cancellable);
+			yield add_backends (cancellable);
 			if (state == STOPPED)
 				return;
-#endif
 
 			var remaining = backends.size + 1;
 
@@ -272,8 +265,7 @@ namespace Idun {
 			}
 		}
 
-#if !MACOS
-		private async void add_portable_backends (Cancellable? cancellable) throws Efni.Error, IOError {
+		private async void add_backends (Cancellable? cancellable) throws Efni.Error, IOError {
 #if HAVE_DAEMON
 			if (use_daemon) {
 				var client = yield DaemonClient.open_shared (locate_daemon, cancellable);
@@ -281,16 +273,24 @@ namespace Idun {
 					yield client.close (cancellable);
 					return;
 				}
+#if MACOS
+				add_backend (new UsbmuxBackend ());
+#else
 				add_backend (new UsbmuxBackend (null));
+#endif
 				add_backend (new DaemonCoreDeviceBackend (client));
 				return;
 			}
 #endif
+#if MACOS
+			add_backend (new UsbmuxBackend ());
+			add_backend (new MacOSCoreDeviceBackend ());
+#else
 			var pairing_store = new PairingStore ();
 			add_backend (new UsbmuxBackend (pairing_store));
 			add_backend (new PortableCoreDeviceBackend (pairing_store));
-		}
 #endif
+		}
 
 		public async void stop (Cancellable? cancellable = null) throws IOError {
 			state = STOPPED;

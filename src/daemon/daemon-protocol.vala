@@ -115,7 +115,11 @@ namespace Idun {
 			var netstack = tunnel.netstack;
 			description["local-address"] = netstack.listener_ip.to_string ();
 			description["scope-id"] = (uint32) netstack.scope_id;
+#if MACOS
+			description["transport"] = "direct";
+#else
 			description["transport"] = (netstack is LwipNetworkStack) ? "relay" : "direct";
+#endif
 
 			return description;
 		}
