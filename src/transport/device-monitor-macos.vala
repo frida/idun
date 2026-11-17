@@ -351,10 +351,23 @@ namespace Idun {
 				.read_member ("tunnelIPAddress")
 				.get_string_value ();
 			tunnel_device_address = new InetAddress.from_string (tunnel_ip_address);
+			tunnel_netstack = new SystemNetworkStack (query_source_address_towards_device (), 0);
 
 			remoted_uuid = yield query_remoted_uuid (cancellable);
 
 			yield load_directory (cancellable);
+		}
+
+		private InetAddress query_source_address_towards_device () throws Efni.Error {
+			try {
+				var probe = new Socket (tunnel_device_address.get_family (), DATAGRAM, UDP);
+				probe.connect (make_remote_address (DISCARD_PORT), null);
+				var source_address = ((InetSocketAddress) probe.get_local_address ()).get_address ();
+				probe.close ();
+				return source_address;
+			} catch (GLib.Error e) {
+				throw new Efni.Error.TRANSPORT ("Unable to determine local tunnel address: %s", e.message);
+			}
 		}
 
 		private static async uint8[] query_remoted_uuid (Cancellable? cancellable) throws Efni.Error, IOError {
@@ -412,28 +425,9 @@ namespace Idun {
 		}
 
 		public UdpSocket create_udp_socket () throws Efni.Error {
-			var netstack = get_tunnel_netstack ();
-			var socket = netstack.create_udp_socket ();
-			socket.bind (new InetSocketAddress (netstack.listener_ip, 0));
+			var socket = tunnel_netstack.create_udp_socket ();
+			socket.bind (new InetSocketAddress (tunnel_netstack.listener_ip, 0));
 			return socket;
-		}
-
-		private SystemNetworkStack get_tunnel_netstack () throws Efni.Error {
-			if (tunnel_netstack == null)
-				tunnel_netstack = new SystemNetworkStack (query_source_address_towards_device (), 0);
-			return tunnel_netstack;
-		}
-
-		private InetAddress query_source_address_towards_device () throws Efni.Error {
-			try {
-				var probe = new Socket (tunnel_device_address.get_family (), DATAGRAM, UDP);
-				probe.connect (make_remote_address (DISCARD_PORT), null);
-				var source_address = ((InetSocketAddress) probe.get_local_address ()).get_address ();
-				probe.close ();
-				return source_address;
-			} catch (GLib.Error e) {
-				throw new Efni.Error.TRANSPORT ("Unable to determine local tunnel address: %s", e.message);
-			}
 		}
 
 		public InetSocketAddress make_remote_address (uint16 port) {
