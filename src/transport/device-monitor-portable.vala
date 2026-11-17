@@ -1224,7 +1224,7 @@ namespace Idun {
 				scope_id: netstack.scope_id
 			);
 			var bootstrap_stream = yield netstack.open_tcp_connection (bootstrap_rsd_endpoint, cancellable);
-			var bootstrap_disco = yield DiscoveryService.open (bootstrap_stream, cancellable);
+			var bootstrap_disco = yield DiscoveryService.open (bootstrap_stream, make_host_uuid (), cancellable);
 
 			var tunnel_service = bootstrap_disco.directory.get_service (
 				"com.apple.internal.dt.coredevice.untrusted.tunnelservice");
@@ -1494,7 +1494,7 @@ namespace Idun {
 		);
 		var rsd_connection = yield netstack.open_tcp_connection (rsd_endpoint, cancellable);
 
-		return yield DiscoveryService.open (rsd_connection, cancellable);
+		return yield DiscoveryService.open (rsd_connection, make_host_uuid (), cancellable);
 	}
 
 	private UdpSocket create_tunnel_udp_socket (TunnelConnection connection) throws Efni.Error {

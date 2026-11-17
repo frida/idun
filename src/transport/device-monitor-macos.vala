@@ -270,7 +270,7 @@ namespace Idun {
 	public sealed class MacOSTunnel : Object, Tunnel {
 		public ServiceDirectory directory {
 			get {
-				return _discovery.directory;
+				return _directory;
 			}
 		}
 
@@ -310,7 +310,8 @@ namespace Idun {
 		private uint16 _rsd_port;
 		private InetAddress? tunnel_device_address;
 		private SystemNetworkStack? tunnel_netstack;
-		private DiscoveryService? _discovery;
+		private uint8[]? remoted_uuid;
+		private ServiceDirectory? _directory;
 		private int64 _opened_at = -1;
 
 		private const uint16 DISCARD_PORT = 9;
@@ -351,8 +352,45 @@ namespace Idun {
 				.get_string_value ();
 			tunnel_device_address = new InetAddress.from_string (tunnel_ip_address);
 
-			_discovery = yield locate_discovery_service (tunnel_device_address, cancellable);
-			_rsd_port = query_remote_port (_discovery.stream);
+			remoted_uuid = yield query_remoted_uuid (cancellable);
+
+			yield load_directory (cancellable);
+		}
+
+		private static async uint8[] query_remoted_uuid (Cancellable? cancellable) throws Efni.Error, IOError {
+			string output;
+			try {
+				var remotectl = new Subprocess.newv ({ "/usr/libexec/remotectl", "dumpstate" }, STDOUT_PIPE);
+				yield remotectl.communicate_utf8_async (null, cancellable, out output, null);
+			} catch (GLib.Error e) {
+				if (e is IOError.CANCELLED)
+					throw (IOError) e;
+				throw new Efni.Error.NOT_SUPPORTED ("Unable to query remoted's UUID: %s", e.message);
+			}
+
+			const string UUID_PREFIX = "\tUUID: ";
+			var lines = output.split ("\n");
+			for (int i = 0; i < lines.length - 1; i++) {
+				if (lines[i] == "Local device" && lines[i + 1].has_prefix (UUID_PREFIX))
+					return parse_uuid (lines[i + 1][UUID_PREFIX.length:]);
+			}
+
+			throw new Efni.Error.NOT_SUPPORTED ("Unable to find remoted's UUID");
+		}
+
+		private static uint8[] parse_uuid (string str) {
+			var hex = str.replace ("-", "");
+			var uuid = new uint8[16];
+			for (int i = 0; i != uuid.length; i++)
+				uuid[i] = (uint8) ((hex[i * 2].xdigit_value () << 4) | hex[i * 2 + 1].xdigit_value ());
+			return uuid;
+		}
+
+		private async void load_directory (Cancellable? cancellable) throws Efni.Error, IOError {
+			var discovery = yield locate_discovery_service (tunnel_device_address, remoted_uuid, cancellable);
+			_directory = discovery.directory;
+			_rsd_port = query_remote_port (discovery.stream);
+			yield discovery.close (cancellable);
 		}
 
 		public async IOStream open_tcp_connection (uint16 port, Cancellable? cancellable) throws Efni.Error, IOError {
@@ -403,10 +441,7 @@ namespace Idun {
 		}
 
 		public async void refresh_discovery (Cancellable? cancellable) throws Efni.Error, IOError {
-			var disco = yield locate_discovery_service (tunnel_device_address, cancellable);
-			yield _discovery.close (cancellable);
-			_discovery = disco;
-			_rsd_port = query_remote_port (disco.stream);
+			yield load_directory (cancellable);
 		}
 
 		private static uint16 query_remote_port (IOStream stream) {
@@ -417,8 +452,8 @@ namespace Idun {
 			}
 		}
 
-		private static async DiscoveryService locate_discovery_service (InetAddress tunnel_device_address, Cancellable? cancellable)
-				throws Efni.Error, IOError {
+		private static async DiscoveryService locate_discovery_service (InetAddress tunnel_device_address, uint8[] local_uuid,
+				Cancellable? cancellable) throws Efni.Error, IOError {
 			var main_context = MainContext.get_thread_default ();
 
 			var path_buf = new char[4096];
@@ -463,7 +498,7 @@ namespace Idun {
 						SocketConnection connection = yield sc.connect_async (connectable, cancellable);
 						Tcp.enable_nodelay (connection.socket);
 
-						return yield DiscoveryService.open (connection, cancellable);
+						return yield DiscoveryService.open (connection, local_uuid, cancellable);
 					} catch (GLib.Error e) {
 					}
 				}

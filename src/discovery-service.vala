@@ -13,6 +13,7 @@ namespace Idun {
 			}
 		}
 
+		private uint8[] local_uuid;
 		private XpcConnection connection;
 
 		private Promise<Variant> handshake_promise = new Promise<Variant> ();
@@ -20,8 +21,9 @@ namespace Idun {
 
 		private Cancellable io_cancellable = new Cancellable ();
 
-		public static async DiscoveryService open (IOStream stream, Cancellable? cancellable = null) throws Efni.Error, IOError {
-			var service = new DiscoveryService (stream);
+		public static async DiscoveryService open (IOStream stream, uint8[] local_uuid, Cancellable? cancellable = null)
+				throws Efni.Error, IOError {
+			var service = new DiscoveryService (stream, local_uuid);
 
 			try {
 				yield service.init_async (Priority.DEFAULT, cancellable);
@@ -32,8 +34,9 @@ namespace Idun {
 			return service;
 		}
 
-		private DiscoveryService (IOStream stream) {
+		private DiscoveryService (IOStream stream, uint8[] local_uuid) {
 			Object (stream: stream);
+			this.local_uuid = local_uuid;
 		}
 
 		private async bool init_async (int io_priority, Cancellable? cancellable) throws Efni.Error, IOError {
@@ -96,7 +99,7 @@ namespace Idun {
 									.add_uint64_value (0x100000000000006)
 								.end_dictionary ()
 								.set_member_name ("UUID")
-								.add_uuid_value (make_host_uuid ())
+								.add_uuid_value (local_uuid)
 							.end_dictionary ()
 							.build (),
 						io_cancellable);
