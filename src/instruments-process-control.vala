@@ -151,7 +151,7 @@ namespace Idun {
 			i = -1;
 			if (!v.holds (typeof (NSNumber)))
 				return false;
-			i = (int) ((NSNumber) v.get_object ()).integer;
+			i = (int) ((NSNumber) v.peek_pointer ()).integer;
 			return true;
 		}
 	}
