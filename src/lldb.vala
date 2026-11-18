@@ -530,6 +530,7 @@ namespace Idun.LLDB {
 		public DarwinCpuType cpu_type {
 			get;
 			set;
+			default = ARM64;
 		}
 
 		public DarwinCpuSubtype cpu_subtype {
@@ -592,6 +593,7 @@ namespace Idun.LLDB {
 	}
 
 	public enum DarwinCpuSubtype {
+		ARM64_ALL	= 0,
 		ARM64E		= 2,
 	}
 

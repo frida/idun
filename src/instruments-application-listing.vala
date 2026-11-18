@@ -108,6 +108,7 @@ namespace Idun {
 			public ApplicationType app_type {
 				get;
 				set;
+				default = USER;
 			}
 
 			public string display_name {

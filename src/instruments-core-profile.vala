@@ -211,6 +211,7 @@ namespace Idun {
 		public KtraceTapTriggerKind kind {
 			get;
 			construct;
+			default = TIME;
 		}
 
 		public KdebugCodeSet? filter {
