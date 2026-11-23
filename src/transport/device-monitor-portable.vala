@@ -1111,10 +1111,11 @@ namespace Idun {
 				timeout_source.destroy ();
 				ncm.disconnect (change_handler);
 
-				cancellable.set_error_if_cancelled ();
-
-				if (ncm.remote_ipv6_address == null)
+				if (cancellable.is_cancelled () || ncm.remote_ipv6_address == null) {
+					ncm.close ();
+					cancellable.set_error_if_cancelled ();
 					throw new Efni.Error.TIMED_OUT ("Unexpectedly timed out while waiting for the NCM remote IPv6 address");
+				}
 			}
 
 			return new NcmPeer () {
