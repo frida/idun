@@ -321,6 +321,12 @@ namespace Idun {
 				device.close ();
 			devices.clear ();
 
+			/* The backends are done with; let go of them so that whatever they
+			 * hold is released along with the monitor. The daemon backend's
+			 * client owns a D-Bus connection, and a connection that outlives
+			 * the shutdown that waits for it hangs the host on the way out. */
+			backends.clear ();
+
 			state_changed ();
 		}
 
