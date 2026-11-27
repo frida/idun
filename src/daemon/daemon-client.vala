@@ -102,6 +102,13 @@ namespace Idun {
 				DaemonService service = yield connection.get_proxy (null, Daemon.OBJECT_PATH, DBusProxyFlags.NONE, cancellable);
 				return new DaemonClient (connection, service);
 			} catch (GLib.Error e) {
+				/* No service to talk to: the connection must not outlive this
+				 * attempt. One that does keeps GLib's shared D-Bus worker alive,
+				 * and with it the host's shutdown. */
+				try {
+					yield connection.close (null);
+				} catch (GLib.Error close_error) {
+				}
 				Daemon.throw_remote_error (e);
 			}
 		}
