@@ -240,6 +240,19 @@ namespace Idun {
 			yield root_stream.submit_data (raw_request, cancellable);
 		}
 
+		public async void reply (XpcMessage request, Bytes body, Cancellable? cancellable = null) throws Efni.Error, IOError {
+			if ((request.flags & MessageFlags.WANTS_REPLY) == 0)
+				throw new Efni.Error.INVALID_ARGUMENT ("Message does not want a reply");
+
+			Bytes raw_reply = new XpcMessageBuilder (MSG)
+				.add_flags (IS_REPLY)
+				.add_id (request.id)
+				.add_body (body)
+				.build ();
+
+			yield reply_stream.submit_data (raw_reply, cancellable);
+		}
+
 		private void on_header (XpcMessage msg, Stream sender) {
 			if (sender == root_stream) {
 				if (root_helo == null)
@@ -571,7 +584,7 @@ namespace Idun {
 					case MSG:
 						if ((msg.flags & MessageFlags.IS_REPLY) != 0)
 							parent.on_reply (msg, this);
-						else if ((msg.flags & (MessageFlags.WANTS_REPLY | MessageFlags.IS_REPLY)) == 0)
+						else
 							parent.message (msg);
 						break;
 					case PING:
