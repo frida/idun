@@ -321,6 +321,8 @@ namespace Idun {
 				device.close ();
 			devices.clear ();
 
+			backends.clear ();
+
 			state_changed ();
 		}
 
